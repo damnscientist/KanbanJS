@@ -27,6 +27,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
   Les cartes d'une liste "terminée" s'affichent barrées/grissées.
   Par défaut, la liste "Done" est marquée terminée.
   Le statut se met à jour automatiquement au drag & drop entre listes.
+  Les cartes d'une liste "terminée" affichent aussi la date de complétion.
 
 ### Cartes
 - Création inline ("Ajouter une carte" dans chaque liste)
@@ -94,7 +95,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Clé localStorage exposée via `DB.KEY` (plus de littéral dupliqué)
 - Blur sur l'éditeur de carte → sauvegarde automatique
 - `esc()` remontée au niveau App, cartes créées en parallèle (`Promise.all`)
-- Liste "terminé" : bouton `✓` dans chaque liste, cartes barrées/grissées, mis à jour au drag & drop
+- Liste "terminé" : bouton `✓` dans chaque liste, cartes barrées/grissées, mis à jour au drag & drop, timestamp de complétion affiché
 - Sélecteur de thème : 4 sombres (Warm Night, Deep Ocean, Forest, Tokyo Night) et 4 clairs (Soft Sand, Mint, Lavender, Tokyo Light) via onglet dans la modale Configuration
 - `initTheme` refactoré avec 3 clés (mode / dark / light) et mode système (`prefers-color-scheme`)
 - Abstraction fournisseur IA : `queryAI` branche via switch (`'openai'` / `'anthropic'` / `'google'`) pour body, headers et parsing de réponse. Endpoint optionnel pour Anthropic, ignoré pour Google.
@@ -114,6 +115,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Les listes ont un champ `done` (booléen) ; si vrai, leurs cartes affichent `.card-done` (barré + grisé)
 - `buildCard(card, done)` accepte un second paramètre pour le style initial
 - Les cartes ont un champ `notes` (chaîne) persisté via `updateCardNotes`, éditable inline (textarea toggleable)
+- Les cartes ont un champ `doneAt` (ISO string ou null) stocké automatiquement quand glissées dans une liste "terminée"
 
 ## Convention de code
 - `make(tag, className)` pour créer des éléments

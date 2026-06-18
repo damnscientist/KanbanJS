@@ -397,6 +397,13 @@
       text-decoration: line-through;
       opacity: 0.55;
     }
+    .card-done-at {
+      display: none;
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+    .card-done .card-done-at { display: block; }
 
     .card-actions {
       display: none;
@@ -1020,10 +1027,10 @@ const DB = (() => {
       { id: uid(), title: 'Done',        position: 3, done: true },
     ],
     cards: [
-      { id: uid(), listId: _tutoId, text: '1. Cliquer + pour décomposer une corvée',             position: 0, notes: '' },
-      { id: uid(), listId: _tutoId, text: '2. L\'IA crée des micro-tâches (30s-3min)',       position: 1, notes: '' },
-      { id: uid(), listId: _tutoId, text: '3. Adapter et glisser dans Backlog',               position: 2, notes: '' },
-      { id: uid(), listId: _tutoId, text: '4. Cocher ✓ sur une liste pour la marquer fermée', position: 3, notes: '' },
+      { id: uid(), listId: _tutoId, text: '1. Cliquer + pour décomposer une corvée',             position: 0, notes: '', doneAt: null },
+      { id: uid(), listId: _tutoId, text: '2. L\'IA crée des micro-tâches (30s-3min)',       position: 1, notes: '', doneAt: null },
+      { id: uid(), listId: _tutoId, text: '3. Adapter et glisser dans Backlog',               position: 2, notes: '', doneAt: null },
+      { id: uid(), listId: _tutoId, text: '4. Cocher ✓ sur une liste pour la marquer fermée', position: 3, notes: '', doneAt: null },
     ],
   };
 
@@ -1111,7 +1118,7 @@ const DB = (() => {
     async createCard(listId, text) {
       const siblings = _state.cards.filter(c => c.listId === listId);
       const pos = siblings.length ? Math.max(...siblings.map(c => c.position)) + 1 : 0;
-      const card = { id: uid(), listId, text, position: pos, notes: '' };
+      const card = { id: uid(), listId, text, position: pos, notes: '', doneAt: null };
       _state.cards.push(card);
       _save();
       return _clone(card);
@@ -1124,6 +1131,11 @@ const DB = (() => {
     async updateCardNotes(id, notes) {
       const c = _state.cards.find(c => c.id === id);
       if (c) { c.notes = notes; _save(); }
+      return c ? _clone(c) : null;
+    },
+    async setCardDoneAt(id, doneAt) {
+      const c = _state.cards.find(c => c.id === id);
+      if (c) { c.doneAt = doneAt; _save(); }
       return c ? _clone(c) : null;
     },
     async deleteCard(id) {
@@ -1336,6 +1348,12 @@ const App = (() => {
     const textEl = make('div', 'card-text');
     textEl.textContent = card.text;
 
+    const doneAtEl = make('div', 'card-done-at');
+    if (card.doneAt) {
+      const d = new Date(card.doneAt);
+      doneAtEl.textContent = 'Terminé le ' + d.toLocaleDateString('fr-FR') + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    }
+
     // Hover actions
     const actionsEl = make('div', 'card-actions');
     const editBtn   = make('button', 'btn-icon');
@@ -1365,7 +1383,7 @@ const App = (() => {
     cancelBtn.textContent = 'Annuler';
     editorActions.append(saveBtn, cancelBtn);
 
-    wrap.append(textEl, notesEl, actionsEl, editor, editorActions);
+    wrap.append(textEl, doneAtEl, notesEl, actionsEl, editor, editorActions);
 
     function enterEdit() {
       wrap.classList.add('editing');
@@ -1450,7 +1468,22 @@ const App = (() => {
       wrap.dataset.listId = toListId;
       await DB.moveCard(cardId, toListId, newPos);
       const destListEl = boardEl.querySelector('.list[data-id="' + toListId + '"]');
-      wrap.classList.toggle('card-done', destListEl && destListEl.dataset.done === 'true');
+      const isDestDone = destListEl && destListEl.dataset.done === 'true';
+      const wasDone = wrap.classList.contains('card-done');
+      wrap.classList.toggle('card-done', isDestDone);
+      if (isDestDone && !wasDone) {
+        const now = new Date().toISOString();
+        await DB.setCardDoneAt(cardId, now);
+        const atEl = wrap.querySelector('.card-done-at');
+        if (atEl) {
+          const d = new Date(now);
+          atEl.textContent = 'Terminé le ' + d.toLocaleDateString('fr-FR') + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        }
+      } else if (!isDestDone && wasDone) {
+        await DB.setCardDoneAt(cardId, null);
+        const atEl = wrap.querySelector('.card-done-at');
+        if (atEl) atEl.textContent = '';
+      }
       if (sourceListId !== toListId) refreshCountBadge(sourceListId);
       refreshCountBadge(toListId);
       refreshHeaderInfo();
@@ -1567,9 +1600,20 @@ const App = (() => {
       wrap.dataset.done = updated.done ? 'true' : 'false';
       doneToggle.dataset.done = updated.done ? 'true' : 'false';
       doneToggle.classList.toggle('active', updated.done);
+      const now = updated.done ? new Date().toISOString() : null;
       cardsEl.querySelectorAll('.card').forEach(c => {
         c.classList.toggle('card-done', updated.done);
+        const atEl = c.querySelector('.card-done-at');
+        if (updated.done && now) {
+          const d = new Date(now);
+          if (atEl) atEl.textContent = 'Terminé le ' + d.toLocaleDateString('fr-FR') + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        } else {
+          if (atEl) atEl.textContent = '';
+        }
       });
+      await Promise.all([...cardsEl.querySelectorAll('.card')].map(c =>
+        DB.setCardDoneAt(c.dataset.id, now)
+      ));
     });
 
     addCardBtn.addEventListener('click',  openCardForm);
