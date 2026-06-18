@@ -83,7 +83,6 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 
 ## Limitations / À faire
 - **Pas de déploiement** — fichier local, provoque des erreurs CORS si ouvert en `file://` (l'API fetch y est bloquée, à servir via un serveur local)
-- **Mode autonome** : l'interface n'est pas dégradée si l'API n'est pas configurée, mais le bouton FAB échoue silencieusement (le message d'erreur guide vers la config)
 - **Fournisseur IA centralisé** : tout le branchement fournisseur est dans `queryAI` (switch provider → body/headers/parsing)
 
 ## Corrections récentes (audit 2026-06-17)
