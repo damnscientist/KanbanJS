@@ -1,6 +1,6 @@
 # KanbanJS — Projet anti-procrastination
 
-Fichier unique `kanban.html` (~2090 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
+Fichier unique `kanban.html` (~2170 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
 
 ## Concept
 
@@ -15,7 +15,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Thème jour/nuit persisté dans 3 clés (`kanbanjs:theme-mode`, `kanbanjs:theme-dark`, `kanbanjs:theme-light`)
 - Sélecteur de thème dans la modale Configuration (onglet "Thèmes") : 4 sombres, 4 clairs
 - Bouton reset (purge `kanbanjs:state`, rechargement)
-- Export / Import JSON du board (boutons ⇩ ⇧ dans le header)
+- Export / Import JSON du board (boutons ↓ ↑ dans le header)
 
 ### Listes
 - Création inline (bouton + formulaire "Ajouter une liste")
@@ -45,12 +45,11 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Parsing robuste de la réponse JSON (équilibrage des crochets)
 - Résultat : liste "Suggestions" créée en position 0 avec les cartes générées
 - Panneau de debug toggleable (logs requête/réponse/parsing)
-- Bouton test via validation des champs (pas de ping API)
 
 ### Persistance
 - `localStorage` avec 3 clés :
   - `kanbanjs:state` → board, listes, cartes (reset nettoie uniquement celle-ci)
-  - `kanbanjs:config` → provider, endpoint, apiKey, model, temperature, prompt
+  - `kanbanjs:config` → provider, endpoint, apiKey, model
   - Thème (3 clés) :
     - `kanbanjs:theme-mode` → 'dark' | 'light' | 'system'
     - `kanbanjs:theme-dark` → 'warm-night' | 'deep-ocean' | 'forest' | 'tokyo-night'
@@ -68,7 +67,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 | `App` | UI Kanban | `init()` boot la session |
 
 ### Mécanique DnD
-- `mousedown`/`mousemove`/`mouseup` (pas d'API HTML5 Drag & Drop)
+- `pointerdown`/`pointermove`/`pointerup` — API unifiée souris + tactile
 - Seuil 4px avant démarrage (évite les faux positifs)
 - Ghost : clone de l'élément, fixed, `pointer-events:none`
 - `getZone(x,y)` : itère sur `getBoundingClientRect()` des cibles (pas de `elementFromPoint`)
@@ -99,6 +98,9 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Sélecteur de thème : 4 sombres (Warm Night, Deep Ocean, Forest, Tokyo Night) et 4 clairs (Soft Sand, Mint, Lavender, Tokyo Light) via onglet dans la modale Configuration
 - `initTheme` refactoré avec 3 clés (mode / dark / light) et mode système (`prefers-color-scheme`)
 - Abstraction fournisseur IA : `queryAI` branche via switch (`'openai'` / `'anthropic'` / `'google'`) pour body, headers et parsing de réponse. Endpoint optionnel pour Anthropic, ignoré pour Google.
+- DnD tactile : migration `mousedown/mousemove/mouseup` → `pointerdown/pointermove/pointerup` + `setPointerCapture` + `touch-action: none`
+- Responsive : media query ≤640px, header compact, boutons tactiles, modales scrollables
+- Export / Import JSON du board
 
 ## Pour reprendre le développement
 
@@ -111,6 +113,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - `buildCard` est synchrone (reçoit une carte déjà construite)
 - Les listes ont un champ `done` (booléen) ; si vrai, leurs cartes affichent `.card-done` (barré + grisé)
 - `buildCard(card, done)` accepte un second paramètre pour le style initial
+- Les cartes ont un champ `notes` (chaîne) persisté via `updateCardNotes`, éditable inline (textarea toggleable)
 
 ## Convention de code
 - `make(tag, className)` pour créer des éléments
