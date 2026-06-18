@@ -802,7 +802,7 @@
     <button class="btn-icon" id="resetBtn" title="Remettre le board à zéro">&#8634;</button>
     <button class="btn-icon" id="exportBtn" title="Exporter le board (JSON)">&#8675;</button>
     <button class="btn-icon" id="importBtn" title="Importer un board (JSON)">&#8673;</button>
-    <input type="file" id="importFile" accept=".json" style="display:none" />
+    <input type="file" id="importFile" accept=".json,application/json" style="display:none" />
     <span class="header-info" id="headerInfo"></span>
   </header>
   <div class="modal-overlay" id="configModal">
@@ -1757,8 +1757,11 @@ const App = (() => {
     const a    = document.createElement('a');
     a.href     = url;
     a.download = 'kanbanjs-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.style.display = 'none';
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
   });
 
   (() => {
