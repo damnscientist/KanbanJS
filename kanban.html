@@ -1141,10 +1141,12 @@ const DnD = (() => {
     dropCb  = null;
     cfg     = null;
     pointerId = null;
+    document.body.style.userSelect = '';
   }
 
   function startDrag() {
     started = true;
+    document.body.style.userSelect = 'none';
     document.addEventListener('contextmenu', e => e.preventDefault(), { once: true });
     ghostEl = cfg.ghostEl || dragEl;
     const rect = ghostEl.getBoundingClientRect();
