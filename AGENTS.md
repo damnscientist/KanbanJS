@@ -81,7 +81,6 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Couleurs : palette dark (bg `#1a1410`) et light (bg `#f7f3ee`)
 
 ## Limitations / À faire
-- **Pas de support tactile** — DnD uniquement souris
 - **Pas de déploiement** — fichier local, provoque des erreurs CORS si ouvert en `file://` (l'API fetch y est bloquée, à servir via un serveur local)
 - **Pas d'export/import JSON** du board
 - **Pas de responsive** — le design n'a aucune media query, inutilisable sur mobile (header déborde, boutons trop petits)

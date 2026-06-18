@@ -255,6 +255,7 @@
     }
 
     .list-header {
+      touch-action: none;
       display: flex;
       align-items: center;
       gap: 5px;
@@ -359,12 +360,14 @@
     }
 
     .dnd-ghost-list {
+      touch-action: none;
       max-height: 400px;
       overflow: hidden;
       transform: rotate(0.6deg);
     }
 
     .card {
+      touch-action: none;
       background: var(--surface-2);
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
@@ -1116,16 +1119,17 @@ const DnD = (() => {
   const THRESHOLD = 4;
 
   // Runtime
-  let dragEl = null;   // reçoit le mousedown
-  let ghostEl= null;   // élément cloné pour le ghost (peut différer de dragEl)
-  let dragId = null;
-  let ghost  = null;
-  let ph     = null;   // placeholder
-  let lastPos= null;   // { container, after, id }
+  let dragEl   = null;
+  let ghostEl  = null;
+  let dragId   = null;
+  let ghost    = null;
+  let ph       = null;
+  let lastPos  = null;
   let offsetX=0, offsetY=0, startX=0, startY=0;
-  let started= false;
-  let dropCb = null;
-  let cfg    = null;
+  let started  = false;
+  let dropCb   = null;
+  let cfg      = null;
+  let pointerId= null;
 
   function cleanup() {
     if (ghost)  { ghost.remove(); ghost = null; }
@@ -1136,10 +1140,12 @@ const DnD = (() => {
     started = false;
     dropCb  = null;
     cfg     = null;
+    pointerId = null;
   }
 
   function startDrag() {
     started = true;
+    document.addEventListener('contextmenu', e => e.preventDefault(), { once: true });
     ghostEl = cfg.ghostEl || dragEl;
     const rect = ghostEl.getBoundingClientRect();
 
@@ -1179,7 +1185,7 @@ const DnD = (() => {
     lastPos = { container: zone.container, after, id: zone.id };
   }
 
-  function onMouseMove(e) {
+  function onMove(e) {
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
     if (!started && Math.hypot(dx, dy) < THRESHOLD) return;
@@ -1190,9 +1196,10 @@ const DnD = (() => {
     syncPlaceholder(e.clientX, e.clientY);
   }
 
-  function onMouseUp(e) {
-    document.removeEventListener('mousemove', onMouseMove);
-    document.removeEventListener('mouseup',   onMouseUp);
+  function onUp(e) {
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup',   onUp);
+    if (dragEl && pointerId != null) dragEl.releasePointerCapture(pointerId);
 
     if (!started) { cleanup(); return; }
 
@@ -1212,11 +1219,12 @@ const DnD = (() => {
 
   // ── API publique : card() et list() ────────────────────────
   function start(dragElement, id, options, onDrop) {
-    dragElement.addEventListener('mousedown', e => {
-      if (e.button !== 0) return;
+    dragElement.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
       if (e.target.closest('button, input, textarea, [data-no-drag]')) return;
       if (options.skip && options.skip(dragElement)) return;
       e.preventDefault();
+      dragElement.setPointerCapture(e.pointerId);
 
       const rect = dragElement.getBoundingClientRect();
       offsetX = e.clientX - rect.left;
@@ -1228,9 +1236,10 @@ const DnD = (() => {
       dropCb  = onDrop;
       cfg     = options;
       started = false;
+      pointerId = e.pointerId;
 
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup',   onMouseUp);
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup',   onUp);
     });
   }
 
