@@ -796,6 +796,30 @@
       #board { padding: 10px; gap: 8px; }
       .fab { width: 44px; height: 44px; font-size: 18px; bottom: 14px; right: 14px; }
     }
+    /* ─── Tutorial ────────────────────────────────────────────── */
+    .tutorial-card {
+      position: relative;
+      width: 240px;
+      padding: 14px 16px 14px 36px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 12px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      align-self: flex-start;
+      line-height: 1.7;
+    }
+    .tutorial-card strong { color: var(--text); font-weight: 600; }
+    .tutorial-card ul { list-style: disc; padding-left: 14px; margin-top: 4px; }
+    .tutorial-card li { margin-bottom: 2px; }
+    .tutorial-card .tutorial-close {
+      position: absolute;
+      top: 6px; right: 6px;
+    }
+    @media (max-width: 640px) {
+      .tutorial-card { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -2148,6 +2172,21 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
       buildAddListWidget();
       refreshHeaderInfo();
+
+      // Tutorial anti-procrastination (affiché une fois)
+      if (!localStorage.getItem('kanbanjs:tutorial-done')) {
+        const card = make('div', 'tutorial-card');
+        const close = make('button', 'btn-icon tutorial-close');
+        close.textContent = '\u2715';
+        close.title = 'Fermer';
+        card.innerHTML = '<strong>Comment ne plus procrastiner</strong><ul><li>1. Cliquez <b>+</b> pour décomposer une corvée</li><li>2. L\'IA crée des micro-tâches (30s-3min)</li><li>3. Glissez-les de <b>Suggestions</b> vers <b>Done</b></li><li>4. Cochez <b>\u2713</b> sur une liste pour la fermer</li></ul>';
+        card.prepend(close);
+        close.addEventListener('click', () => {
+          card.remove();
+          localStorage.setItem('kanbanjs:tutorial-done', '1');
+        });
+        boardEl.appendChild(card);
+      }
     } catch (err) {
       console.error('KanbanJS init error:', err);
       boardEl.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-muted)">
