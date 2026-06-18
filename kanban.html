@@ -800,7 +800,7 @@
     .tutorial-card {
       position: relative;
       width: 240px;
-      padding: 14px 16px 14px 36px;
+      padding: 14px 36px 14px 36px;
       background: var(--surface-2);
       border: 1px solid var(--border);
       border-radius: var(--radius);
@@ -2179,7 +2179,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
         const close = make('button', 'btn-icon tutorial-close');
         close.textContent = '\u2715';
         close.title = 'Fermer';
-        card.innerHTML = '<strong>Comment ne plus procrastiner</strong><ul><li>1. Cliquez <b>+</b> pour décomposer une corvée</li><li>2. L\'IA crée des micro-tâches (30s-3min)</li><li>3. Glissez-les de <b>Suggestions</b> vers <b>Done</b></li><li>4. Cochez <b>\u2713</b> sur une liste pour la fermer</li></ul>';
+        card.innerHTML = '<strong>Comment ne plus procrastiner</strong><ul><li>1. Cliquez <b>+</b> pour décomposer une corvée</li><li>2. L\'IA crée des micro-tâches (30s-3min)</li><li>3. Adaptez et glissez-les dans <b>Backlog</b></li><li>4. Cochez <b>\u2713</b> sur une liste pour la fermer</li></ul>';
         card.prepend(close);
         close.addEventListener('click', () => {
           card.remove();
