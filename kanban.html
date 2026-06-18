@@ -730,8 +730,8 @@
       transition: background var(--transition), transform var(--transition);
     }
     .fab:hover { background: var(--accent-hover); transform: scale(1.08); }
-    .fab.fab-no-api { background: var(--danger); opacity: 0.85; }
-    .fab.fab-no-api:hover { background: var(--danger-hover); opacity: 1; }
+    .fab.fab-no-api { background: var(--danger); opacity: 1; }
+    .fab.fab-no-api:hover { background: var(--danger-hover); }
 
     /* ─── Spinner ─────────────────────────────────────────────────────────── */
     .spinner {
@@ -1791,6 +1791,7 @@ const App = (() => {
       showStatus(statusEl, 'Configuration sauvegardée.', 'success');
       const fab = document.getElementById('decomposeFab');
       fab.classList.remove('fab-no-api');
+      fab.textContent = '+';
       fab.title = 'Décomposer une tâche (IA)';
     });
 
@@ -2210,6 +2211,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       const fab  = document.getElementById('decomposeFab');
       if (!cfg || !cfg.apiKey || !cfg.model) {
         fab.classList.add('fab-no-api');
+        fab.textContent = '!';
         fab.title = 'API non configurée — Cliquez sur ⚙';
       }
     } catch (err) {
