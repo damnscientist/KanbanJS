@@ -779,13 +779,13 @@
     /* ─── Responsive (écrans ≤ 640px) ──────────────────────────── */
     @media (max-width: 640px) {
       header {
-        gap: 6px;
-        padding: 0 10px;
+        gap: 4px;
+        padding: 0 8px;
       }
       header h1 { display: none; }
       .header-info { display: none; }
-      .board-name { min-width: 0; max-width: 150px; }
-      header .btn-icon { width: 32px; height: 32px; font-size: 18px; }
+      .board-name { min-width: 0; max-width: 130px; padding: 4px 6px; font-size: 13px; }
+      header .btn-icon { width: 28px; height: 28px; font-size: 16px; }
       #board { padding: 10px; gap: 8px; }
       .fab { width: 44px; height: 44px; font-size: 18px; bottom: 14px; right: 14px; }
     }
@@ -800,6 +800,9 @@
     <button class="btn-icon" id="themeToggle" title="Changer le thème">&#9788;</button>
     <button class="btn-icon" id="configBtn" title="Configuration API IA">&#9881;</button>
     <button class="btn-icon" id="resetBtn" title="Remettre le board à zéro">&#8634;</button>
+    <button class="btn-icon" id="exportBtn" title="Exporter le board (JSON)">&#8675;</button>
+    <button class="btn-icon" id="importBtn" title="Importer un board (JSON)">&#8673;</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" />
     <span class="header-info" id="headerInfo"></span>
   </header>
   <div class="modal-overlay" id="configModal">
@@ -1744,6 +1747,45 @@ const App = (() => {
       location.reload();
     }
   });
+
+  // ── EXPORT / IMPORT JSON ──────────────────────────────────
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const raw = localStorage.getItem(DB.KEY);
+    if (!raw) return;
+    const blob = new Blob([raw], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'kanbanjs-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  (() => {
+    const importFile = document.getElementById('importFile');
+    document.getElementById('importBtn').addEventListener('click', () => importFile.click());
+    importFile.addEventListener('change', () => {
+      const file = importFile.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result);
+          if (!data.board || !Array.isArray(data.lists) || !Array.isArray(data.cards)) {
+            alert('Fichier invalide : structure JSON attendue (board, lists, cards).');
+            return;
+          }
+          if (!confirm('Remplacer le board actuel par le fichier importé ? Les données actuelles seront perdues.')) return;
+          localStorage.setItem(DB.KEY, reader.result);
+          location.reload();
+        } catch (_) {
+          alert('Fichier JSON invalide.');
+        }
+      };
+      reader.readAsText(file);
+      importFile.value = '';
+    });
+  })();
 
   // ── BOARD NAME ────────────────────────────────────────────
   boardNameInput.addEventListener('blur', async () => {

@@ -15,6 +15,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Thème jour/nuit persisté dans 3 clés (`kanbanjs:theme-mode`, `kanbanjs:theme-dark`, `kanbanjs:theme-light`)
 - Sélecteur de thème dans la modale Configuration (onglet "Thèmes") : 4 sombres, 4 clairs
 - Bouton reset (purge `kanbanjs:state`, rechargement)
+- Export / Import JSON du board (boutons ⇩ ⇧ dans le header)
 
 ### Listes
 - Création inline (bouton + formulaire "Ajouter une liste")
@@ -82,7 +83,6 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 
 ## Limitations / À faire
 - **Pas de déploiement** — fichier local, provoque des erreurs CORS si ouvert en `file://` (l'API fetch y est bloquée, à servir via un serveur local)
-- **Pas d'export/import JSON** du board
 - **Mode autonome** : l'interface n'est pas dégradée si l'API n'est pas configurée, mais le bouton FAB échoue silencieusement (le message d'erreur guide vers la config)
 - **Fournisseur IA centralisé** : tout le branchement fournisseur est dans `queryAI` (switch provider → body/headers/parsing)
 
