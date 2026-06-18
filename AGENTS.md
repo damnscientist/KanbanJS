@@ -83,7 +83,6 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 ## Limitations / À faire
 - **Pas de déploiement** — fichier local, provoque des erreurs CORS si ouvert en `file://` (l'API fetch y est bloquée, à servir via un serveur local)
 - **Pas d'export/import JSON** du board
-- **Pas de responsive** — le design n'a aucune media query, inutilisable sur mobile (header déborde, boutons trop petits)
 - **Mode autonome** : l'interface n'est pas dégradée si l'API n'est pas configurée, mais le bouton FAB échoue silencieusement (le message d'erreur guide vers la config)
 - **Fournisseur IA centralisé** : tout le branchement fournisseur est dans `queryAI` (switch provider → body/headers/parsing)
 

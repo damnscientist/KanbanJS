@@ -775,6 +775,20 @@
     .debug-panel.open { display: block; }
     .debug-panel .debug-label { color: #88aacc; }
     .debug-panel .debug-error  { color: #e06060; }
+
+    /* ─── Responsive (écrans ≤ 640px) ──────────────────────────── */
+    @media (max-width: 640px) {
+      header {
+        gap: 6px;
+        padding: 0 10px;
+      }
+      header h1 { display: none; }
+      .header-info { display: none; }
+      .board-name { min-width: 0; max-width: 90px; }
+      header .btn-icon { width: 32px; height: 32px; font-size: 18px; }
+      #board { padding: 10px; gap: 8px; }
+      .fab { width: 44px; height: 44px; font-size: 18px; bottom: 14px; right: 14px; }
+    }
   </style>
 </head>
 <body>
