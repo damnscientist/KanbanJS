@@ -604,6 +604,9 @@
       box-shadow: var(--shadow);
       width: 420px;
       max-width: 94vw;
+      max-height: 88vh;
+      display: flex;
+      flex-direction: column;
       animation: fadeIn .15s ease;
     }
 
@@ -613,6 +616,7 @@
       gap: 8px;
       padding: 14px 16px;
       border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
 
     .modal-title {
@@ -625,6 +629,7 @@
     .modal-tabs {
       display: flex;
       border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
 
     .modal-tab {
@@ -653,6 +658,7 @@
       flex-direction: column;
       gap: 14px;
       padding: 16px;
+      overflow-y: auto;
     }
 
     .field {
