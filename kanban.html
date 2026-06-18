@@ -1775,6 +1775,7 @@ const App = (() => {
   document.getElementById('resetBtn').addEventListener('click', () => {
     if (confirm('Remettre le board à zéro ? Toutes les données seront perdues.')) {
       localStorage.removeItem(DB.KEY);
+      localStorage.removeItem('kanbanjs:tutorial-done');
       location.reload();
     }
   });
