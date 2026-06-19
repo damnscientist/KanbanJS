@@ -1178,8 +1178,14 @@ const DnD = (() => {
   let pointerId= null;
 
   function cleanup() {
+    if (dragEl && pointerId != null) {
+      try { dragEl.releasePointerCapture(pointerId); } catch (_) {}
+    }
     if (ghost)  { ghost.remove(); ghost = null; }
     if (ph)     { ph.remove();    ph = null; }
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup',   onUp);
+    document.removeEventListener('pointercancel', onCancel);
     lastPos = null;
     dragEl = ghostEl = null;
     dragId = null;
@@ -1245,8 +1251,10 @@ const DnD = (() => {
   }
 
   function onUp(e) {
-    release();
     if (!started) { cleanup(); return; }
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup',   onUp);
+    document.removeEventListener('pointercancel', onCancel);
 
     if (lastPos && ph.parentNode) {
       const newPos = cfg.getPos(lastPos.container, ph);
@@ -1263,16 +1271,11 @@ const DnD = (() => {
   }
 
   function onCancel(e) {
-    release();
-    if (ph) ph.replaceWith(ghostEl);
-    cleanup();
-  }
-
-  function release() {
     document.removeEventListener('pointermove', onMove);
     document.removeEventListener('pointerup',   onUp);
     document.removeEventListener('pointercancel', onCancel);
-    if (dragEl && pointerId != null) dragEl.releasePointerCapture(pointerId);
+    if (ph) ph.replaceWith(ghostEl);
+    cleanup();
   }
 
   // ── API publique : card() et list() ────────────────────────
@@ -1281,6 +1284,7 @@ const DnD = (() => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       if (e.target.closest('button, input, textarea, [data-no-drag]')) return;
       if (options.skip && options.skip(dragElement)) return;
+      if (dragEl) cleanup();
       e.preventDefault();
       dragElement.setPointerCapture(e.pointerId);
 
