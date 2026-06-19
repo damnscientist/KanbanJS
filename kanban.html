@@ -1245,10 +1245,7 @@ const DnD = (() => {
   }
 
   function onUp(e) {
-    document.removeEventListener('pointermove', onMove);
-    document.removeEventListener('pointerup',   onUp);
-    if (dragEl && pointerId != null) dragEl.releasePointerCapture(pointerId);
-
+    release();
     if (!started) { cleanup(); return; }
 
     if (lastPos && ph.parentNode) {
@@ -1263,6 +1260,19 @@ const DnD = (() => {
       ph.replaceWith(ghostEl);
       cleanup();
     }
+  }
+
+  function onCancel(e) {
+    release();
+    if (ph) ph.replaceWith(ghostEl);
+    cleanup();
+  }
+
+  function release() {
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup',   onUp);
+    document.removeEventListener('pointercancel', onCancel);
+    if (dragEl && pointerId != null) dragEl.releasePointerCapture(pointerId);
   }
 
   // ── API publique : card() et list() ────────────────────────
@@ -1288,6 +1298,7 @@ const DnD = (() => {
 
       document.addEventListener('pointermove', onMove);
       document.addEventListener('pointerup',   onUp);
+      document.addEventListener('pointercancel', onCancel);
     });
   }
 
