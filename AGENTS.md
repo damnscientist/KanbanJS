@@ -1,6 +1,6 @@
 # KanbanJS — Projet anti-procrastination
 
-Fichier unique `kanban.html` (~2170 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
+Fichier unique `kanban.html` (~2250 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
 
 ## Concept
 
@@ -22,7 +22,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Renommage (clic sur le titre)
 - Suppression (confirmation)
 - Défaut au premier lancement : "Tuto", "Backlog", "In Progress", "Done"
-- Drag & drop souris pour réordonner horizontalement (DnD générique)
+- Drag & drop souris et tactile pour réordonner horizontalement (DnD générique)
 - **Liste "terminé"** : chaque liste a un bouton `✓` qui la marque comme "terminée".
   Les cartes d'une liste "terminée" s'affichent barrées/grissées.
   Par défaut, la liste "Done" est marquée terminée.
@@ -34,11 +34,11 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Édition inline (textarea avec Sauver/Annuler, Enter valide, Escape annule)
 - **Notes** : chaque carte a un bouton `≡` qui ouvre une textarea de note personnelle, sauvegardée au blur
 - Suppression
-- Drag & drop souris entre listes (ou au sein de la même liste)
+- Drag & drop souris et tactile entre listes (ou au sein de la même liste)
 - Drag ghost + placeholder visuel
 
 ### IA (Décomposition)
-- FAB flottant `＋` en bas à droite
+- FAB flottant `＋` en bas à droite (passe en `!` rouge si l'API n'est pas configurée)
 - Modal "Décomposer une tâche" avec textarea
 - **Abstraction fournisseur** : supporte OpenAI/compatible, Anthropic, Google Gemini (switch dans `queryAI`)
 - Appel POST à l'API avec format spécifique par fournisseur
@@ -63,7 +63,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 | Module | Responsabilité | API publique |
 |---|---|---|
 | `initTheme` | IIFE, lit/applique/persiste le thème | lecture au load |
-| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, getCards, createCard, updateCard, updateCardNotes, deleteCard, moveCard` |
+| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, getCards, createCard, updateCard, updateCardNotes, setCardDoneAt, deleteCard, moveCard` |
 | `DnD` | Moteur de drag & drop générique | `start(dragEl, id, { ghostEl?, ghostClass?, phClass?, getZone, getAfter, getPos, skip? }, onDrop)` |
 | `App` | UI Kanban | `init()` boot la session |
 
@@ -101,6 +101,10 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - DnD tactile : migration `mousedown/mousemove/mouseup` → `pointerdown/pointermove/pointerup` + `setPointerCapture` + `touch-action: none`
 - Responsive : media query ≤640px, header compact, boutons tactiles, modales scrollables
 - Export / Import JSON du board
+- FAB : badge rouge `!` quand l'API n'est pas configurée, redevient `+` après sauvegarde de la config
+- Timestamp de complétion : `doneAt` stocké quand une carte glisse dans une liste "terminée", affiché sous le texte
+- Tuto : liste "Tuto" avec cartes-exemples dans `DB._default` au lieu d'une carte flottante
+- DnD : handler `pointercancel` + `cleanup()` défensif (libération capture persistante)
 
 ## Pour reprendre le développement
 
