@@ -213,6 +213,28 @@
 
     .spacer { flex: 1; }
 
+    .progress-bar {
+      width: 100px;
+      height: 6px;
+      border-radius: 3px;
+      background: var(--surface-3);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: var(--text);
+      transition: width .3s ease, opacity .3s ease;
+      width: 0%;
+      opacity: 0;
+    }
+    .progress-pct {
+      font-size: 11px;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
     .header-info {
       font-size: 12px;
       color: var(--text-dim);
@@ -468,6 +490,15 @@
     .list.list-selected {
       border-color: var(--accent);
       box-shadow: 0 0 0 2px rgba(232,168,90,.25), var(--shadow-sm);
+    }
+
+    .list.wip-warn {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent), var(--shadow-sm);
+    }
+    .list-count.wip-warn {
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 15%, transparent);
     }
 
     .list-footer { padding: 6px 10px 10px; flex-shrink: 0; }
@@ -808,6 +839,84 @@
     }
     .cheatsheet .col { flex: 1; }
 
+    /* ─── Recherche ─────────────────────────────────────────── */
+    .search-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.45);
+      z-index: 15000;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 12vh;
+    }
+    .search-overlay.open { display: flex; }
+
+    .search-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      width: 480px;
+      max-width: 92vw;
+      display: flex;
+      flex-direction: column;
+      animation: fadeIn .1s ease;
+    }
+
+    .search-input {
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 15px;
+      padding: 14px 16px;
+      outline: none;
+      border-radius: var(--radius) var(--radius) 0 0;
+    }
+    .search-input::placeholder { color: var(--text-dim); }
+
+    .search-results {
+      max-height: 360px;
+      overflow-y: auto;
+      padding: 6px 0;
+    }
+    .search-results:empty { display: none; }
+
+    .search-result {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      cursor: pointer;
+      transition: background var(--transition);
+    }
+    .search-result:hover,
+    .search-result.active { background: var(--surface-2); }
+
+    .search-result-text {
+      color: var(--text);
+      font-size: 13px;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .search-result-list {
+      color: var(--text-dim);
+      font-size: 11px;
+      flex-shrink: 0;
+      margin-left: 12px;
+    }
+
+    .search-empty {
+      padding: 16px;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+
     /* ─── Spinner ─────────────────────────────────────────────────────────── */
     .spinner {
       display: none;
@@ -876,6 +985,7 @@
       header h1 { display: none; }
       .header-info { display: none; }
       .board-name { min-width: 0; max-width: 130px; padding: 4px 6px; font-size: 13px; }
+      .progress-bar, .progress-pct { display: none; }
       header .btn-icon { width: 26px; height: 26px; font-size: 15px; }
       #board { padding: 10px; gap: 8px; }
       .fab { width: 44px; height: 44px; font-size: 18px; bottom: 14px; right: 14px; }
@@ -887,6 +997,10 @@
   <header>
     <h1>KanbanJS</h1>
     <input class="board-name" id="boardName" value="Mon Board" title="Cliquer pour renommer" maxlength="200" />
+    <div class="progress-bar" id="progressBar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <span class="progress-pct" id="progressPct"></span>
     <span class="spacer"></span>
     <button class="btn-icon" id="themeToggle" title="Changer le thème">&#9788;</button>
     <button class="btn-icon" id="configBtn" title="Configuration API IA">&#9881;</button>
@@ -1418,9 +1532,16 @@ const App = (() => {
 
   function refreshHeaderInfo() {
     const ls    = boardEl.querySelectorAll('.list').length;
-    const total = boardEl.querySelectorAll('.card').length;
+    const cards = boardEl.querySelectorAll('.card');
+    const total = cards.length;
+    const done  = boardEl.querySelectorAll('.card.card-done').length;
     headerInfoEl.textContent =
-      `${ls} liste${ls !== 1 ? 's' : ''} \u00b7 ${total} carte${total !== 1 ? 's' : ''}`;
+      `${ls} liste${ls !== 1 ? 's' : ''} \u00b7 ${done}/${total} carte${total !== 1 ? 's' : ''}`;
+    const pct = total ? Math.round(done / total * 100) : 0;
+    const fill = document.getElementById('progressFill');
+    fill.style.width   = pct + '%';
+    fill.style.opacity  = pct / 100;
+    document.getElementById('progressPct').textContent = pct + '%';
   }
 
   function refreshCountBadge(listId) {
@@ -1428,7 +1549,15 @@ const App = (() => {
     if (!listEl) return;
     const badge   = listEl.querySelector('.list-count');
     const cardsEl = listEl.querySelector('.cards');
-    if (badge && cardsEl) badge.textContent = cardsEl.querySelectorAll('.card').length;
+    if (!badge || !cardsEl) return;
+    const total = cardsEl.querySelectorAll('.card').length;
+    badge.textContent = total || '0';
+    const title    = listEl.querySelector('.list-title');
+    const titleVal = title ? title.value.toLowerCase() : '';
+    const isDone   = listEl.dataset.done === 'true';
+    const warn     = !isDone && (titleVal.includes('wip') || titleVal.includes('in progress')) && total >= 3;
+    listEl.classList.toggle('wip-warn', warn);
+    badge.classList.toggle('wip-warn', warn);
   }
 
   function readAIConfig() {
@@ -1664,6 +1793,7 @@ const App = (() => {
       if (val && val !== list.title) {
         await DB.renameList(list.id, val);
         list.title = val;
+        refreshCountBadge(list.id);
       } else {
         titleInput.value = list.title;
       }
@@ -1699,8 +1829,8 @@ const App = (() => {
       const card   = await DB.createCard(list.id, text);
       const cardEl = buildCard(card, list.done);
       cardsEl.appendChild(cardEl);
-      countBadge.textContent = cardsEl.querySelectorAll('.card').length;
       closeCardForm();
+      refreshCountBadge(list.id);
       refreshHeaderInfo();
       cardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
@@ -1725,6 +1855,8 @@ const App = (() => {
         }
       });
       await DB.setCardsDoneAt(list.id, now);
+      refreshCountBadge(list.id);
+      refreshHeaderInfo();
     });
 
     addCardBtn.addEventListener('click',  openCardForm);
@@ -2434,6 +2566,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       }
       selectList(listEl);
       _firstCard(listEl);
+      refreshCountBadge(list.id);
       refreshHeaderInfo();
     }
   }
@@ -2595,9 +2728,10 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     box.appendChild(cols);
 
     box.appendChild(rows('Autres', [
-      [['1','9'], 'Focus liste 1 \u00E0 9'],
-      [['?'],     'Aide'],
-      [['Esc'],   'D\u00E9s\u00E9lectionner'],
+      [['Ctrl','K'], 'Rechercher une carte'],
+      [['1','9'],     'Focus liste 1 \u00E0 9'],
+      [['?'],         'Aide'],
+      [['Esc'],       'D\u00E9s\u00E9lectionner'],
     ]));
 
     overlay.appendChild(box);
@@ -2617,6 +2751,116 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     BINDINGS['?'] = { fn: toggle, when: () => !_inInput() };
   })();
 
+  // ── RECHERCHE ───────────────────────────────────────────
+  (() => {
+    const overlay = make('div', 'search-overlay');
+    const box     = make('div', 'search-box');
+    const input   = make('input', 'search-input');
+    input.type = 'text';
+    input.placeholder = 'Rechercher une carte\u2026';
+    const results = make('div', 'search-results');
+    box.append(input, results);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    let _activeIdx = -1;
+
+    function fuzzy(text, query) {
+      const t = text.toLowerCase();
+      const q = query.toLowerCase();
+      let qi = 0;
+      for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+        if (t[ti] === q[qi]) qi++;
+      }
+      return qi === q.length;
+    }
+
+    function search(query) {
+      results.innerHTML = '';
+      _activeIdx = -1;
+      const q = query.trim();
+      if (!q) return;
+      const matches = [];
+      boardEl.querySelectorAll('.list').forEach(list => {
+        const listTitle = list.querySelector('.list-title').value;
+        list.querySelectorAll('.card').forEach(card => {
+          const text  = card.querySelector('.card-text').textContent;
+          const notes = card.querySelector('.card-notes')?.value || '';
+          if (fuzzy(text, q) || fuzzy(notes, q) || fuzzy(listTitle, q)) {
+            matches.push({ card, list, listTitle, text });
+          }
+        });
+      });
+      if (!matches.length) {
+        results.innerHTML = '<div class="search-empty">Aucun r\u00E9sultat</div>';
+        return;
+      }
+      matches.forEach((m, i) => {
+        const row = make('div', 'search-result');
+        row.dataset.idx = i;
+        row.innerHTML = '<span class="search-result-text">' + esc(m.text) + '</span><span class="search-result-list">' + esc(m.listTitle) + '</span>';
+        row.addEventListener('click', () => { selectList(m.list); selectCard(m.card); close(); });
+        results.appendChild(row);
+      });
+    }
+
+    function open() {
+      overlay.classList.add('open');
+      input.value = '';
+      results.innerHTML = '';
+      _activeIdx = -1;
+      setTimeout(() => input.focus(), 50);
+    }
+
+    function close() {
+      overlay.classList.remove('open');
+      input.blur();
+    }
+
+    function activate(idx) {
+      const rows = results.querySelectorAll('.search-result');
+      rows.forEach(r => r.classList.remove('active'));
+      if (rows[idx]) {
+        rows[idx].classList.add('active');
+        rows[idx].scrollIntoView({ block: 'nearest' });
+      }
+      _activeIdx = idx;
+    }
+
+    function selectActive() {
+      const active = results.querySelector('.search-result.active');
+      if (active) active.click();
+    }
+
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) close();
+    });
+
+    input.addEventListener('input', () => search(input.value));
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.stopPropagation(); close(); return; }
+      if (e.key === 'Enter')  { selectActive(); return; }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const rows = results.querySelectorAll('.search-result');
+        if (rows.length) activate(Math.min(_activeIdx + 1, rows.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activate(Math.max(_activeIdx - 1, 0));
+        return;
+      }
+    });
+
+    document.addEventListener('keydown', e => {
+      if ((e.key === 'k' || e.key === 'K') && (e.ctrlKey || e.metaKey)) {
+        if (overlay.classList.contains('open')) { e.preventDefault(); close(); }
+        else if (!_inInput())                    { e.preventDefault(); open(); }
+      }
+    }, true);
+  })();
+
   // ── INIT ──────────────────────────────────────────────────
   async function init() {
     try {
@@ -2625,7 +2869,10 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       document.title = `KanbanJS \u00b7 ${boardData.name}`;
 
       const lists = await DB.getLists();
-      for (const l of lists) boardEl.appendChild(await buildList(l));
+      for (const l of lists) {
+        boardEl.appendChild(await buildList(l));
+        refreshCountBadge(l.id);
+      }
 
       buildAddListWidget();
       refreshHeaderInfo();

@@ -16,6 +16,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Sélecteur de thème dans la modale Configuration (onglet "Thèmes") : 4 sombres, 4 clairs
 - Bouton reset (purge `kanbanjs:state`, rechargement)
 - Export / Import JSON du board (boutons ↓ ↑ dans le header)
+- Indicateur de progression : barre + pourcentage dans le header (`3/8`, `38%`), masqué sur mobile
 
 ### Clavier
 - Raccourcis vim-like : minuscule = carte, majuscule = liste
@@ -26,6 +27,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Presse-papier unifié : couper/copier une liste copie titre + cartes
 - Sélection visuelle : bordure accent, actions toujours visibles sur carte sélectionnée
 - Ignore automatiquement quand un input/textarea a le focus ou une modale est ouverte
+- `Ctrl+K` : recherche fuzzy sur les cartes du board (texte, notes, titre de liste)
 
 ### Listes
 - Création inline (bouton + formulaire "Ajouter une liste")
@@ -38,6 +40,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
   Par défaut, la liste "Done" est marquée terminée.
   Le statut se met à jour automatiquement au drag & drop entre listes.
   Les cartes d'une liste "terminée" affichent aussi la date de complétion.
+- **WIP warning** : bordure et badge accent quand une liste "WIP" ou "In Progress" contient ≥ 3 cartes
 
 ### Cartes
 - Création inline ("Ajouter une carte" dans chaque liste)
@@ -95,8 +98,6 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 
 ### À implémenter (priorité décroissante)
 1. **Undo/Redo** — stack de snapshots rapides dans DB (80-120 LOC). Pas de refactor.
-2. **Recherche / filtre** — `Ctrl+K` fuzzy search sur les cartes du board (60-100 LOC).
-3. **Indicateur de progression** — ratio « complété/total » par liste, compteur global (40-60 LOC).
 
 ### Nice to have (si projet < 3000 lignes)
 4. **Notes markdown** — rendu basique (gras, italique, listes, code inline) dans la textarea de notes, toggle édition/aperçu (70-110 LOC).
@@ -117,6 +118,9 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Escape ferme la textarea de notes (cohérent avec l'éditeur de carte)
 - Cheatsheet toggleable avec `?` (overlay semi-transparent, deux colonnes carte/liste)
 - `L` → `N` (nouvelle liste), `R` → `E` (renommer liste) : cohérence majuscule = liste
+- `Ctrl+K` : recherche fuzzy sur les cartes du board (texte, notes, titre de liste)
+- Indicateur de progression : barre + pourcentage dans le header (`3/8 cartes`, `38%`)
+- WIP warning : bordure et badge en `var(--accent)` quand une liste "WIP" / "In Progress" contient ≥ 3 cartes
 
 ## Corrections récentes (audit 2026-06-19)
 - `DB.setCardsDoneAt(listId, doneAt)` : méthode batch pour éviter N écritures localStorage quand on toggle une liste terminée
