@@ -1,6 +1,6 @@
 # KanbanJS — Projet anti-procrastination
 
-Fichier unique `kanban.html` (~2250 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
+Fichier unique `kanban.html` (~2660 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
 
 ## Concept
 
@@ -10,12 +10,22 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 
 ### Board
 - Board unique avec listes et cartes
-- Renommage du board (input dans le header)
+- Renommage du board (input dans le header, `maxlength="200"`)
 - Header info : nombre de listes et cartes
 - Thème jour/nuit persisté dans 3 clés (`kanbanjs:theme-mode`, `kanbanjs:theme-dark`, `kanbanjs:theme-light`)
 - Sélecteur de thème dans la modale Configuration (onglet "Thèmes") : 4 sombres, 4 clairs
 - Bouton reset (purge `kanbanjs:state`, rechargement)
 - Export / Import JSON du board (boutons ↓ ↑ dans le header)
+
+### Clavier
+- Raccourcis vim-like : minuscule = carte, majuscule = liste
+- Navigation : `h`/`l` cartes ↑/↓, `j`/`k` listes ←/→, `1-9` focus liste n
+- Actions carte : `n` créer, `r` renommer, `e` ouvrir notes, `x` couper, `y` copier, `p` coller
+- Actions liste : `N` créer, `E` renommer, `D` toggle terminé, `X` couper, `Y` copier, `P` coller
+- `Esc` désélectionne la carte/liste courante, `?` affiche l'aide clavier
+- Presse-papier unifié : couper/copier une liste copie titre + cartes
+- Sélection visuelle : bordure accent, actions toujours visibles sur carte sélectionnée
+- Ignore automatiquement quand un input/textarea a le focus ou une modale est ouverte
 
 ### Listes
 - Création inline (bouton + formulaire "Ajouter une liste")
@@ -63,7 +73,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 | Module | Responsabilité | API publique |
 |---|---|---|
 | `initTheme` | IIFE, lit/applique/persiste le thème | lecture au load |
-| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, getCards, createCard, updateCard, updateCardNotes, setCardDoneAt, deleteCard, moveCard` |
+| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, getCards, createCard, updateCard, updateCardNotes, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard` |
 | `DnD` | Moteur de drag & drop générique | `start(dragEl, id, { ghostEl?, ghostClass?, phClass?, getZone, getAfter, getPos, skip? }, onDrop)` |
 | `App` | UI Kanban | `init()` boot la session |
 
@@ -82,8 +92,40 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Couleurs : palette dark (bg `#1a1410`) et light (bg `#f7f3ee`)
 
 ## Limitations / À faire
+
+### À implémenter (priorité décroissante)
+1. **Undo/Redo** — stack de snapshots rapides dans DB (80-120 LOC). Pas de refactor.
+2. **Recherche / filtre** — `Ctrl+K` fuzzy search sur les cartes du board (60-100 LOC).
+3. **Indicateur de progression** — ratio « complété/total » par liste, compteur global (40-60 LOC).
+
+### Nice to have (si projet < 3000 lignes)
+4. **Notes markdown** — rendu basique (gras, italique, listes, code inline) dans la textarea de notes, toggle édition/aperçu (70-110 LOC).
+5. **Archive / repli** — collapse des listes terminées, état persisté (40-60 LOC).
+6. **Tags** — champ `tags: []` sur les cartes, chips colorés, filtrable via la recherche (70-85 LOC).
+
+### Non retenu
+- **Multi-boards** : sur-ingénierie pour un outil mono-utilisateur. Les listes séparent déjà les contextes.
+
+### Limites techniques
 - **Pas de déploiement** — fichier local, provoque des erreurs CORS si ouvert en `file://` (l'API fetch y est bloquée, à servir via un serveur local)
 - **Fournisseur IA centralisé** : tout le branchement fournisseur est dans `queryAI` (switch provider → body/headers/parsing)
+
+## Corrections récentes (audit 2026-06-20)
+- Raccourcis clavier vim-like : minuscule = carte, majuscule = liste. Navigation `h`/`l`/`j`/`k` + actions `n`/`r`/`e`/`x`/`y`/`p` + `N`/`E`/`D`/`X`/`Y`/`P` + `1-9` + `Esc` + `?` aide (~160 LOC)
+- Sélection visuelle carte/liste : bordure accent, actions visibles en permanence sur carte sélectionnée
+- Presse-papier unifié : `x`/`y`/`p` sur cartes, `X`/`Y`/`P` sur listes (titre + cartes)
+- Escape ferme la textarea de notes (cohérent avec l'éditeur de carte)
+- Cheatsheet toggleable avec `?` (overlay semi-transparent, deux colonnes carte/liste)
+- `L` → `N` (nouvelle liste), `R` → `E` (renommer liste) : cohérence majuscule = liste
+
+## Corrections récentes (audit 2026-06-19)
+- `DB.setCardsDoneAt(listId, doneAt)` : méthode batch pour éviter N écritures localStorage quand on toggle une liste terminée
+- `_save()` wrappé dans try/catch avec alerte en cas de `QuotaExceededError` (stockage saturé)
+- `parseAITasks` : détection des guillemets dans le compteur de crochets (les `[`/`]` dans les chaînes JSON ne perturbent plus le parsing)
+- Prompt OpenAI : ajout d'un message `role: 'user'` en complément du `system` (compatibilité élargie avec les modèles exigeant un message user)
+- `flashMessage(el, msg, cls, ms)` : fonction partagée remplaçant les doublons `showStatus`/`show`
+- `close()` de la modale décomposition nettoie le timer de statut
+- `maxlength="200"` sur les inputs de nom (board et listes)
 
 ## Corrections récentes (audit 2026-06-17)
 - Timeout 60s sur l'appel fetch API (`AbortController`)
@@ -123,6 +165,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 ## Convention de code
 - `make(tag, className)` pour créer des éléments
 - `autoResize(ta)` pour les textareas
+- `flashMessage(el, msg, cls, ms)` pour les messages de statut temporaires (stocke le timer sur `el._timer`)
 - Tableaux de bord en `const`, fonctions helpers en closures
 - Pas de commentaires dans le code (sauf en-têtes de sections)
 - Noms en français (utilisateur francophone)

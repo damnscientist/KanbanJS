@@ -459,6 +459,17 @@
     }
     .card-notes.open { display: block; }
 
+    .card.card-selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(232,168,90,.3), var(--shadow-sm);
+    }
+    .card.card-selected .card-actions { display: flex; }
+
+    .list.list-selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(232,168,90,.25), var(--shadow-sm);
+    }
+
     .list-footer { padding: 6px 10px 10px; flex-shrink: 0; }
 
     .btn-add-card {
@@ -733,6 +744,70 @@
     .fab.fab-no-api { background: var(--danger); opacity: 1; }
     .fab.fab-no-api:hover { background: var(--danger-hover); }
 
+    /* Cheatsheet */
+    .cheatsheet-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.45);
+      z-index: 18000;
+      align-items: center;
+      justify-content: center;
+    }
+    .cheatsheet-overlay.open { display: flex; }
+
+    .cheatsheet {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px 24px;
+      max-width: 440px;
+      width: 92vw;
+      max-height: 82vh;
+      overflow-y: auto;
+      animation: fadeIn .12s ease;
+    }
+
+    .cheatsheet h3 {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      margin: 12px 0 6px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--border);
+    }
+    .cheatsheet h3:first-child { margin-top: 0; }
+
+    .cheatsheet kbd {
+      display: inline-block;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 11px;
+      color: var(--accent);
+      min-width: 22px;
+      text-align: center;
+    }
+
+    .cheatsheet .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 3px 0;
+      font-size: 12px;
+    }
+    .cheatsheet .row .keys { flex-shrink: 0; display: flex; gap: 3px; }
+    .cheatsheet .row .desc { color: var(--text-muted); }
+
+    .cheatsheet .cols {
+      display: flex;
+      gap: 28px;
+    }
+    .cheatsheet .col { flex: 1; }
+
     /* ─── Spinner ─────────────────────────────────────────────────────────── */
     .spinner {
       display: none;
@@ -811,7 +886,7 @@
 <div id="app">
   <header>
     <h1>KanbanJS</h1>
-    <input class="board-name" id="boardName" value="Mon Board" title="Cliquer pour renommer" />
+    <input class="board-name" id="boardName" value="Mon Board" title="Cliquer pour renommer" maxlength="200" />
     <span class="spacer"></span>
     <button class="btn-icon" id="themeToggle" title="Changer le thème">&#9788;</button>
     <button class="btn-icon" id="configBtn" title="Configuration API IA">&#9881;</button>
@@ -1054,7 +1129,15 @@ const DB = (() => {
   }
 
   function _save() {
-    localStorage.setItem(KEY, JSON.stringify(_state));
+    try {
+      localStorage.setItem(KEY, JSON.stringify(_state));
+    } catch (e) {
+      if (e.name === 'QuotaExceededError') {
+        alert('Espace de stockage saturé. Supprimez des listes ou des cartes.');
+      } else {
+        throw e;
+      }
+    }
   }
 
   // ── Helpers ───────────────────────────────────────────────
@@ -1139,6 +1222,10 @@ const DB = (() => {
       const c = _state.cards.find(c => c.id === id);
       if (c) { c.doneAt = doneAt; _save(); }
       return c ? _clone(c) : null;
+    },
+    async setCardsDoneAt(listId, doneAt) {
+      _state.cards.filter(c => c.listId === listId).forEach(c => { c.doneAt = doneAt; });
+      _save();
     },
     async deleteCard(id) {
       _state.cards = _state.cards.filter(c => c.id !== id);
@@ -1355,6 +1442,13 @@ const App = (() => {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  function flashMessage(el, msg, cls, ms) {
+    if (el._timer) clearTimeout(el._timer);
+    el.textContent = msg;
+    el.className   = cls ? 'cfg-status ' + cls : 'cfg-status';
+    if (ms) el._timer = setTimeout(() => { el.textContent = ''; el.className = 'cfg-status'; }, ms);
+  }
+
   // ── CARD ─────────────────────────────────────────────────
   function buildCard(card, done) {
     const wrap = make('div', 'card');
@@ -1444,6 +1538,7 @@ const App = (() => {
     notesBtn.addEventListener('click',  e => { e.stopPropagation(); toggleNotes(); });
     notesEl.addEventListener('blur',    () => saveNotes());
     notesEl.addEventListener('input',   () => autoResize(notesEl));
+    notesEl.addEventListener('keydown', e => { if (e.key === 'Escape') { notesEl.classList.remove('open'); notesEl.blur(); } });
     saveBtn.addEventListener('click',   saveEdit);
     cancelBtn.addEventListener('click', exitEdit);
 
@@ -1520,6 +1615,7 @@ const App = (() => {
     const titleInput = make('input', 'list-title');
     titleInput.type  = 'text';
     titleInput.value = list.title;
+    titleInput.maxLength = 200;
     const countBadge = make('span', 'list-count');
     countBadge.textContent = '0';
     const doneToggle = make('button', 'btn-icon');
@@ -1628,9 +1724,7 @@ const App = (() => {
           if (atEl) atEl.textContent = '';
         }
       });
-      await Promise.all([...cardsEl.querySelectorAll('.card')].map(c =>
-        DB.setCardDoneAt(c.dataset.id, now)
-      ));
+      await DB.setCardsDoneAt(list.id, now);
     });
 
     addCardBtn.addEventListener('click',  openCardForm);
@@ -1758,13 +1852,6 @@ const App = (() => {
       localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
     }
 
-    function showStatus(el, msg, cls) {
-      if (el._timer) clearTimeout(el._timer);
-      el.textContent = msg;
-      el.className   = cls ? 'cfg-status ' + cls : 'cfg-status';
-      el._timer = setTimeout(() => { el.textContent = ''; el.className = 'cfg-status'; }, 3000);
-    }
-
     function open() {
       const cfg = readAIConfig();
       providerEl.value = cfg && cfg.provider ? cfg.provider : 'openai';
@@ -1795,15 +1882,15 @@ const App = (() => {
       const apiKey   = keyEl.value.trim();
       const model    = modelEl.value.trim();
       if (!apiKey || !model) {
-        showStatus(statusEl, 'Clé API et modèle requis.', 'error');
+        flashMessage(statusEl, 'Clé API et modèle requis.', 'error', 3000);
         return;
       }
       if (provider === 'openai' && !endpoint) {
-        showStatus(statusEl, 'Endpoint requis pour OpenAI.', 'error');
+        flashMessage(statusEl, 'Endpoint requis pour OpenAI.', 'error', 3000);
         return;
       }
       saveCfg({ provider, endpoint, apiKey, model });
-      showStatus(statusEl, 'Configuration sauvegardée.', 'success');
+      flashMessage(statusEl, 'Configuration sauvegardée.', 'success', 3000);
       const fab = document.getElementById('decomposeFab');
       fab.classList.remove('fab-no-api');
       fab.textContent = '+';
@@ -1816,7 +1903,7 @@ const App = (() => {
       const l = lightSel.value;
       window.__themeAPI.dark  = d;
       window.__themeAPI.light = l;
-      showStatus(themeStatusEl, 'Thèmes sauvegardés.', 'success');
+      flashMessage(themeStatusEl, 'Thèmes sauvegardés.', 'success', 3000);
     });
   })();
 
@@ -1955,10 +2042,15 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     } catch (_) { /* continue */ }
 
     // Cherche le premier tableau JSON complet (gère crochets imbriqués)
-    let depth = 0, start = -1;
+    let depth = 0, start = -1, inString = false, escape = false;
     for (let i = 0; i < raw.length; i++) {
-      if (raw[i] === '[') { if (depth === 0) start = i; depth++; }
-      else if (raw[i] === ']') {
+      const c = raw[i];
+      if (escape) { escape = false; continue; }
+      if (c === '\\') { escape = true; continue; }
+      if (c === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (c === '[') { if (depth === 0) start = i; depth++; }
+      else if (c === ']') {
         depth--;
         if (depth === 0 && start !== -1) {
           try {
@@ -1996,7 +2088,10 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       };
       body = JSON.stringify({
         model: cfg.model,
-        messages: [{ role: 'system', content: prompt }],
+        messages: [
+          { role: 'system', content: prompt },
+          { role: 'user', content: 'Décompose cette tâche en micro-actions. Réponds uniquement avec le tableau JSON.' },
+        ],
         temperature: 0.3,
       });
     } else if (provider === 'anthropic') {
@@ -2126,17 +2221,9 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     const debugPanel  = document.getElementById('debugPanel');
     const debugToggle = document.getElementById('debugToggle');
     const debugLines  = [];
-    let   statusTimer;
 
     function debugLog(msg) {
       debugLines.push(msg);
-    }
-
-    function show(msg, cls) {
-      if (statusTimer) clearTimeout(statusTimer);
-      statusEl.textContent = msg;
-      statusEl.className   = cls ? 'cfg-status ' + cls : 'cfg-status';
-      if (cls) statusTimer = setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'cfg-status'; }, 6000);
     }
 
     function renderDebug() {
@@ -2163,6 +2250,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     }
 
     function close() {
+      if (statusEl._timer) clearTimeout(statusEl._timer);
       overlay.classList.remove('open');
     }
 
@@ -2184,11 +2272,11 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
     btn.addEventListener('click', async () => {
       const task = input.value.trim();
-      if (!task) { show('Décrivez une tâche.', 'error'); return; }
+      if (!task) { flashMessage(statusEl, 'Décrivez une tâche.', 'error', 6000); return; }
 
       btn.disabled = true;
       spinner.classList.add('active');
-      show('Analyse en cours…', '');
+      flashMessage(statusEl, 'Analyse en cours…', '', 0);
       debugLines.length = 0;
 
       try {
@@ -2201,12 +2289,332 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
         renderDebug();
         debugPanel.classList.add('open');
         debugToggle.textContent = '\u25B2 Debug';
-        show(err.message, 'error');
+        flashMessage(statusEl, err.message, 'error', 6000);
       } finally {
         btn.disabled = false;
         spinner.classList.remove('active');
       }
     });
+  })();
+
+  // ── CLAVIER ────────────────────────────────────────────────
+  let _selCard    = null;
+  let _selList    = null;
+  let _clipboard  = null;
+
+  function selectCard(el) {
+    if (_selCard) _selCard.classList.remove('card-selected');
+    _selCard = el || null;
+    if (_selCard) {
+      _selCard.classList.add('card-selected');
+      _selCard.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      const list = _selCard.closest('.list');
+      if (list) selectList(list);
+    }
+  }
+
+  function selectList(el) {
+    if (_selList === el) return;
+    if (_selList) _selList.classList.remove('list-selected');
+    _selList = el || null;
+    if (_selList) _selList.classList.add('list-selected');
+  }
+
+  function clearSelection() {
+    selectCard(null);
+    selectList(null);
+  }
+
+  function _firstCard(listEl) {
+    const c = listEl && listEl.querySelector('.card');
+    selectCard(c || null);
+  }
+
+  function prevCard() {
+    if (!_selCard || !_selCard.isConnected) { _selCard = null; return; }
+    const cards = [..._selCard.parentNode.querySelectorAll('.card')];
+    const idx = cards.indexOf(_selCard);
+    selectCard(cards[idx - 1] || cards[cards.length - 1]);
+  }
+
+  function nextCard() {
+    if (!_selCard || !_selCard.isConnected) { _selCard = null; return; }
+    const cards = [..._selCard.parentNode.querySelectorAll('.card')];
+    const idx = cards.indexOf(_selCard);
+    selectCard(cards[idx + 1] || cards[0]);
+  }
+
+  function prevList() {
+    const lists = [...boardEl.querySelectorAll('.list')];
+    if (!lists.length) return;
+    if (_selList && _selList.isConnected) {
+      selectList(lists[(lists.indexOf(_selList) - 1 + lists.length) % lists.length]);
+    } else {
+      selectList(lists[lists.length - 1]);
+    }
+    _firstCard(_selList);
+  }
+
+  function nextList() {
+    const lists = [...boardEl.querySelectorAll('.list')];
+    if (!lists.length) return;
+    if (_selList && _selList.isConnected) {
+      selectList(lists[(lists.indexOf(_selList) + 1) % lists.length]);
+    } else {
+      selectList(lists[0]);
+    }
+    _firstCard(_selList);
+  }
+
+  function newCardAtSel() {
+    if (!_selList || !_selList.isConnected) return;
+    const btn = _selList.querySelector('.btn-add-card');
+    if (btn) btn.click();
+  }
+
+  function _newList() {
+    const btn = boardEl.querySelector('.add-list-btn');
+    if (btn) btn.click();
+  }
+
+  async function cutCard() {
+    if (!_selCard || !_selCard.isConnected) return;
+    const textEl  = _selCard.querySelector('.card-text');
+    const notesEl = _selCard.querySelector('.card-notes');
+    _clipboard = { type: 'card', text: textEl.textContent, notes: notesEl ? notesEl.value : '' };
+    const listEl  = _selCard.closest('.list');
+    const nextDom = _selCard.nextElementSibling || _selCard.previousElementSibling;
+    await DB.deleteCard(_selCard.dataset.id);
+    _selCard.remove();
+    if (nextDom && nextDom.matches('.card')) selectCard(nextDom);
+    else if (listEl) { selectList(listEl); _firstCard(listEl); }
+    if (listEl) refreshCountBadge(listEl.dataset.id);
+    refreshHeaderInfo();
+  }
+
+  function copyCard() {
+    if (!_selCard || !_selCard.isConnected) return;
+    const textEl  = _selCard.querySelector('.card-text');
+    const notesEl = _selCard.querySelector('.card-notes');
+    _clipboard = { type: 'card', text: textEl.textContent, notes: notesEl ? notesEl.value : '' };
+  }
+
+  async function _paste() {
+    if (!_clipboard) return;
+    if (_clipboard.type === 'card') {
+      if (!_selList || !_selList.isConnected) return;
+      const listId = _selList.dataset.id;
+      const done   = _selList.dataset.done === 'true';
+      const card   = await DB.createCard(listId, _clipboard.text);
+      if (_clipboard.notes) await DB.updateCardNotes(card.id, _clipboard.notes);
+      const cardsEl = _selList.querySelector('.cards');
+      const cardEl  = buildCard(card, done);
+      cardsEl.appendChild(cardEl);
+      selectCard(cardEl);
+      refreshCountBadge(listId);
+      refreshHeaderInfo();
+    } else if (_clipboard.type === 'list') {
+      const list  = await DB.createList(_clipboard.title);
+      if (_selList && _selList.isConnected) {
+        const lists = [...boardEl.querySelectorAll('.list')];
+        const idx   = lists.indexOf(_selList);
+        await DB.reorderList(list.id, idx + 1);
+      }
+      for (const c of _clipboard.cards) {
+        const card = await DB.createCard(list.id, c.text);
+        if (c.notes) await DB.updateCardNotes(card.id, c.notes);
+      }
+      const listEl = await buildList(list);
+      if (_selList && _selList.isConnected) {
+        _selList.after(listEl);
+      } else {
+        const addBtn = boardEl.querySelector('.add-list-btn');
+        const widget = addBtn ? addBtn.parentNode : null;
+        boardEl.insertBefore(listEl, widget);
+      }
+      selectList(listEl);
+      _firstCard(listEl);
+      refreshHeaderInfo();
+    }
+  }
+
+  async function cutList() {
+    if (!_selList || !_selList.isConnected) return;
+    const title = _selList.querySelector('.list-title').value;
+    const cards = [..._selList.querySelectorAll('.card')].map(c => ({
+      text:  c.querySelector('.card-text').textContent,
+      notes: c.querySelector('.card-notes')?.value || '',
+    }));
+    _clipboard = { type: 'list', title, cards };
+    const id    = _selList.dataset.id;
+    const lists = [...boardEl.querySelectorAll('.list')];
+    const idx   = lists.indexOf(_selList);
+    await DB.deleteList(id);
+    _selList.remove();
+    if (lists.length > 1) {
+      const next = lists[idx + 1] || lists[idx - 1];
+      if (next && next.isConnected) { selectList(next); _firstCard(next); }
+    } else {
+      clearSelection();
+    }
+    refreshHeaderInfo();
+  }
+
+  function copyList() {
+    if (!_selList || !_selList.isConnected) return;
+    const title = _selList.querySelector('.list-title').value;
+    const cards = [..._selList.querySelectorAll('.card')].map(c => ({
+      text:  c.querySelector('.card-text').textContent,
+      notes: c.querySelector('.card-notes')?.value || '',
+    }));
+    _clipboard = { type: 'list', title, cards };
+  }
+
+  function toggleDoneList() {
+    if (!_selList || !_selList.isConnected) return;
+    const btn = _selList.querySelector('.btn-icon[title*="termin"]');
+    if (btn) btn.click();
+  }
+
+  function renameList() {
+    if (!_selList || !_selList.isConnected) return;
+    const input = _selList.querySelector('.list-title');
+    if (input) { input.focus(); input.select(); }
+  }
+
+  function _renameCard() {
+    if (!_selCard || !_selCard.isConnected) return;
+    const btn = _selCard.querySelector('.card-actions .btn-icon');
+    if (btn) btn.click();
+  }
+
+  function _openNotes() {
+    if (!_selCard || !_selCard.isConnected) return;
+    const btns = _selCard.querySelectorAll('.card-actions .btn-icon');
+    if (btns[1]) btns[1].click();
+  }
+
+  function focusList(n) {
+    const lists = [...boardEl.querySelectorAll('.list')];
+    const el = lists[n - 1];
+    if (el) { selectList(el); _firstCard(el); }
+  }
+
+  function _inInput() {
+    const ae = document.activeElement;
+    return ae && ae.matches('input, textarea, select');
+  }
+
+  const BINDINGS = {};
+  for (let n = 1; n <= 9; n++) {
+    BINDINGS[String(n)] = { fn: (i => () => focusList(i))(n), when: () => !_inInput() };
+  }
+  Object.assign(BINDINGS, {
+    h:      { fn: nextCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
+    l:      { fn: prevCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
+    j:      { fn: prevList,     when: () => !_inInput() },
+    k:      { fn: nextList,     when: () => !_inInput() },
+    n:      { fn: newCardAtSel, when: () => _selList && _selList.isConnected && !_inInput() },
+    r:      { fn: _renameCard,  when: () => _selCard && _selCard.isConnected && !_inInput() },
+    e:      { fn: _openNotes,   when: () => _selCard && _selCard.isConnected && !_inInput() },
+    x:      { fn: cutCard,      when: () => _selCard && _selCard.isConnected && !_inInput() },
+    y:      { fn: copyCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
+    p:      { fn: _paste,       when: () => _selList && _selList.isConnected && _clipboard && _clipboard.type === 'card' && !_inInput() },
+    N:      { fn: _newList,       when: () => !_inInput() },
+    E:      { fn: renameList,     when: () => _selList && _selList.isConnected && !_inInput() },
+    X:      { fn: cutList,        when: () => _selList && _selList.isConnected && !_inInput() },
+    Y:      { fn: copyList,       when: () => _selList && _selList.isConnected && !_inInput() },
+    P:      { fn: _paste,         when: () => _clipboard && !_inInput() },
+    D:      { fn: toggleDoneList, when: () => _selList && _selList.isConnected && !_inInput() },
+    Escape: { fn: clearSelection, when: () => (_selCard || _selList) && !_inInput() },
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (document.querySelector('.modal-overlay.open')) return;
+    const action = BINDINGS[e.key];
+    if (action && action.when()) { e.preventDefault(); action.fn(); }
+  });
+
+  boardEl.addEventListener('click', e => {
+    const card = e.target.closest('.card');
+    if (card) { selectCard(card); return; }
+    const list = e.target.closest('.list');
+    if (list) selectList(list);
+  });
+
+  // ── CHEATSHEET ───────────────────────────────────────────
+  (() => {
+    const overlay = make('div', 'cheatsheet-overlay');
+    const box     = make('div', 'cheatsheet');
+
+    function rows(section, pairs) {
+      const frag = document.createDocumentFragment();
+      const h3 = document.createElement('h3');
+      h3.textContent = section;
+      frag.appendChild(h3);
+      for (const [keys, desc] of pairs) {
+        const row    = make('div', 'row');
+        const keysEl = make('span', 'keys');
+        keys.forEach(k => {
+          const kbd = document.createElement('kbd');
+          kbd.textContent = k;
+          keysEl.appendChild(kbd);
+        });
+        const descEl = make('span', 'desc');
+        descEl.textContent = desc;
+        row.append(keysEl, descEl);
+        frag.appendChild(row);
+      }
+      return frag;
+    }
+
+    const cols = make('div', 'cols');
+    const colA = make('div', 'col');
+    const colB = make('div', 'col');
+
+    colA.appendChild(rows('Cartes', [
+      [['h','l'], 'Nav. \u2191/\u2193 dans la liste'],
+      [['n'],     'Nouvelle carte'],
+      [['r'],     'Renommer'],
+      [['e'],     'Ouvrir les notes'],
+      [['x'],     'Couper'],
+      [['y'],     'Copier'],
+      [['p'],     'Coller'],
+    ]));
+    colB.appendChild(rows('Listes', [
+      [['j','k'], 'Nav. \u2190/\u2192'],
+      [['N'],     'Nouvelle liste'],
+      [['E'],     'Renommer'],
+      [['D'],     'Marquer termin\u00E9e'],
+      [['X'],     'Couper'],
+      [['Y'],     'Copier'],
+      [['P'],     'Coller'],
+    ]));
+    cols.append(colA, colB);
+    box.appendChild(cols);
+
+    box.appendChild(rows('Autres', [
+      [['1','9'], 'Focus liste 1 \u00E0 9'],
+      [['?'],     'Aide'],
+      [['Esc'],   'D\u00E9s\u00E9lectionner'],
+    ]));
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    function toggle() {
+      overlay.classList.toggle('open');
+    }
+
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) toggle();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && overlay.classList.contains('open')) toggle();
+    });
+
+    BINDINGS['?'] = { fn: toggle, when: () => !_inInput() };
   })();
 
   // ── INIT ──────────────────────────────────────────────────
