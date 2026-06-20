@@ -804,11 +804,12 @@
       font-size: 12px;
       font-weight: 600;
       color: var(--accent);
-      margin: 12px 0 6px;
+      margin: 14px 0 8px;
       padding-bottom: 4px;
       border-bottom: 1px solid var(--border);
     }
     .cheatsheet h3:first-child { margin-top: 0; }
+    .cheatsheet-intro { margin-top: 14px; }
 
     .cheatsheet kbd {
       display: inline-block;
@@ -985,10 +986,10 @@
       header h1 { display: none; }
       .header-info { display: none; }
       .board-name { min-width: 0; max-width: 130px; padding: 4px 6px; font-size: 13px; }
-      .progress-bar, .progress-pct { display: none; }
       header .btn-icon { width: 26px; height: 26px; font-size: 15px; }
       #board { padding: 10px; gap: 8px; }
       .fab { width: 44px; height: 44px; font-size: 18px; bottom: 14px; right: 14px; }
+      .cheatsheet-shortcuts { display: none; }
     }
   </style>
 </head>
@@ -1005,6 +1006,7 @@
     <button class="btn-icon" id="themeToggle" title="Changer le thème">&#9788;</button>
     <button class="btn-icon" id="configBtn" title="Configuration API IA">&#9881;</button>
     <button class="btn-icon" id="resetBtn" title="Remettre le board à zéro">&#8634;</button>
+    <button class="btn-icon" id="helpBtn" title="Raccourcis clavier">?</button>
     <button class="btn-icon" id="exportBtn" title="Exporter le board (JSON)">&#8595;</button>
     <button class="btn-icon" id="importBtn" title="Importer un board (JSON)">&#8593;</button>
     <input type="file" id="importFile" accept=".json,application/json" style="display:none" />
@@ -2643,10 +2645,10 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     BINDINGS[String(n)] = { fn: (i => () => focusList(i))(n), when: () => !_inInput() };
   }
   Object.assign(BINDINGS, {
-    h:      { fn: nextCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
-    l:      { fn: prevCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
-    j:      { fn: prevList,     when: () => !_inInput() },
-    k:      { fn: nextList,     when: () => !_inInput() },
+    h:      { fn: prevCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
+    l:      { fn: nextCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
+    j:      { fn: nextList,     when: () => !_inInput() },
+    k:      { fn: prevList,     when: () => !_inInput() },
     n:      { fn: newCardAtSel, when: () => _selList && _selList.isConnected && !_inInput() },
     r:      { fn: _renameCard,  when: () => _selCard && _selCard.isConnected && !_inInput() },
     e:      { fn: _openNotes,   when: () => _selCard && _selCard.isConnected && !_inInput() },
@@ -2725,14 +2727,39 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       [['P'],     'Coller'],
     ]));
     cols.append(colA, colB);
-    box.appendChild(cols);
 
-    box.appendChild(rows('Autres', [
+    const intro = make('div', 'cheatsheet-intro');
+    const h3 = document.createElement('h3');
+    h3.textContent = 'Kanban anti-procrastination';
+    intro.appendChild(h3);
+    for (const [action, desc] of [
+      ['D\u00E9composer', 'une grosse t\u00E2che \u00E0 co\u00FBt \u00E9lev\u00E9 d\u2019entr\u00E9e est cass\u00E9e en micro-t\u00E2ches \u00E0 co\u00FBt d\u2019entr\u00E9e nul'],
+      ['Visualiser',     'chaque micro-t\u00E2che devient une carte concr\u00E8te, plus rien n\u2019est flou dans ta t\u00EAte'],
+      ['Limiter',        'max 2-3 cartes actives (warning accent), tu finis avant d\u2019en reprendre'],
+      ['Tirer le flux',  'tu glisses une carte dans \u00AB In Progress \u00BB seulement quand tu passes \u00E0 l\u2019action'],
+      ['Am\u00E9liorer', 'tu ajustes, d\u00E9coupes, archives, jettes ce qui bloque'],
+    ]) {
+      const row  = make('div', 'row');
+      const keys = make('span', 'keys');
+      const kbd  = document.createElement('kbd');
+      kbd.textContent = action;
+      keys.appendChild(kbd);
+      const descEl = make('span', 'desc');
+      descEl.textContent = desc;
+      row.append(keys, descEl);
+      intro.appendChild(row);
+    }
+    const shortcuts = make('div', 'cheatsheet-shortcuts');
+    shortcuts.appendChild(cols);
+    shortcuts.appendChild(rows('Autres', [
       [['Ctrl','K'], 'Rechercher une carte'],
       [['1','9'],     'Focus liste 1 \u00E0 9'],
       [['?'],         'Aide'],
       [['Esc'],       'D\u00E9s\u00E9lectionner'],
     ]));
+    box.appendChild(shortcuts);
+
+    box.appendChild(intro);
 
     overlay.appendChild(box);
     document.body.appendChild(overlay);
@@ -2876,6 +2903,10 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
       buildAddListWidget();
       refreshHeaderInfo();
+
+      document.getElementById('helpBtn').addEventListener('click', () => {
+        document.querySelector('.cheatsheet-overlay').classList.toggle('open');
+      });
 
       const cfg = readAIConfig();
       const fab  = document.getElementById('decomposeFab');

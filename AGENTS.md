@@ -121,6 +121,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - `Ctrl+K` : recherche fuzzy sur les cartes du board (texte, notes, titre de liste)
 - Indicateur de progression : barre + pourcentage dans le header (`3/8 cartes`, `38%`)
 - WIP warning : bordure et badge en `var(--accent)` quand une liste "WIP" / "In Progress" contient ≥ 3 cartes
+- Cheatsheet enrichie : 5 principes kanban anti-procrastination en style kbd, section philosophique masquée sur mobile, raccourcis masqués sur mobile, lien `?` dans le header
 
 ## Corrections récentes (audit 2026-06-19)
 - `DB.setCardsDoneAt(listId, doneAt)` : méthode batch pour éviter N écritures localStorage quand on toggle une liste terminée
