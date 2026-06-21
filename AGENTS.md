@@ -28,6 +28,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Sélection visuelle : bordure accent, actions toujours visibles sur carte sélectionnée
 - Ignore automatiquement quand un input/textarea a le focus ou une modale est ouverte
 - `Ctrl+K` : recherche fuzzy sur les cartes du board (texte, notes, titre de liste)
+- `u` undo, `Ctrl+R` redo : 30 niveaux de snapshots (session uniquement)
 
 ### Listes
 - Création inline (bouton + formulaire "Ajouter une liste")
@@ -97,7 +98,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 ## Limitations / À faire
 
 ### À implémenter (priorité décroissante)
-1. **Undo/Redo** — stack de snapshots rapides dans DB (80-120 LOC). Pas de refactor.
+1. *(aucune — tout est fait)*
 
 ### Nice to have (si projet < 3000 lignes)
 4. **Notes markdown** — rendu basique (gras, italique, listes, code inline) dans la textarea de notes, toggle édition/aperçu (70-110 LOC).
@@ -124,6 +125,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Cheatsheet enrichie : 5 principes kanban anti-procrastination en style kbd, section philosophique masquée sur mobile, raccourcis masqués sur mobile, lien `?` dans le header
 - Header mobile : `overflow-x: auto` (les boutons restent accessibles, la barre de progression est visible)
 - Bugfixes : bleed-through clavier sur overlay recherche, Escape cheatsheet vidait la sélection, éditeur carte bloqué si texte vide, import quota, _selCard orphelin après suppression UI, contextmenu DnD non retiré
+- Undo/Redo : `u` undo, `Ctrl+R` redo, 30 snapshots (session uniquement)
 
 ## Corrections récentes (audit 2026-06-19)
 - `DB.setCardsDoneAt(listId, doneAt)` : méthode batch pour éviter N écritures localStorage quand on toggle une liste terminée

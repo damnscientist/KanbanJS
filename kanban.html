@@ -1584,6 +1584,45 @@ const App = (() => {
     if (ms) el._timer = setTimeout(() => { el.textContent = ''; el.className = 'cfg-status'; }, ms);
   }
 
+  // ── Undo / Redo ──────────────────────────────────────────
+  const MAX_UNDO = 30;
+  let _undoStack = [];
+  let _redoStack = [];
+
+  function _snapshot() {
+    _undoStack.push(localStorage.getItem(DB.KEY));
+    if (_undoStack.length > MAX_UNDO) _undoStack.shift();
+    _redoStack = [];
+  }
+
+  async function _rebuild() {
+    boardEl.querySelectorAll('.list').forEach(l => l.remove());
+    const addWidget = boardEl.querySelector(':scope > div[style*="display:contents"]');
+    if (addWidget) addWidget.remove();
+    const lists = await DB.getLists();
+    for (const l of lists) {
+      boardEl.appendChild(await buildList(l));
+      refreshCountBadge(l.id);
+    }
+    buildAddListWidget();
+    clearSelection();
+    refreshHeaderInfo();
+  }
+
+  function _undo() {
+    if (!_undoStack.length) return;
+    _redoStack.push(localStorage.getItem(DB.KEY));
+    localStorage.setItem(DB.KEY, _undoStack.pop());
+    location.reload();
+  }
+
+  function _redo() {
+    if (!_redoStack.length) return;
+    _undoStack.push(localStorage.getItem(DB.KEY));
+    localStorage.setItem(DB.KEY, _redoStack.pop());
+    location.reload();
+  }
+
   // ── CARD ─────────────────────────────────────────────────
   function buildCard(card, done) {
     const wrap = make('div', 'card');
@@ -1643,7 +1682,7 @@ const App = (() => {
     async function saveEdit() {
       const text = editor.value.trim();
       if (!text) { exitEdit(); return; }
-      await DB.updateCard(card.id, text);
+      _snapshot(); await DB.updateCard(card.id, text);
       card.text          = text;
       textEl.textContent = text;
       exitEdit();
@@ -1659,7 +1698,7 @@ const App = (() => {
 
     async function saveNotes() {
       const notes = notesEl.value;
-      await DB.updateCardNotes(card.id, notes);
+      _snapshot(); await DB.updateCardNotes(card.id, notes);
       card.notes = notes;
     }
 
@@ -1679,7 +1718,7 @@ const App = (() => {
 
     delBtn.addEventListener('click', async e => {
       e.stopPropagation();
-      await DB.deleteCard(card.id);
+      _snapshot(); await DB.deleteCard(card.id);
       if (_selCard === wrap) _selCard = null;
       const currentListId = wrap.dataset.listId;
       wrap.remove();
@@ -1714,7 +1753,7 @@ const App = (() => {
     }, async (cardId, toListId, newPos) => {
       const sourceListId = wrap.dataset.listId;
       wrap.dataset.listId = toListId;
-      await DB.moveCard(cardId, toListId, newPos);
+      _snapshot(); await DB.moveCard(cardId, toListId, newPos);
       const destListEl = boardEl.querySelector('.list[data-id="' + toListId + '"]');
       const isDestDone = destListEl && destListEl.dataset.done === 'true';
       const wasDone = wrap.classList.contains('card-done');
@@ -1798,7 +1837,7 @@ const App = (() => {
     titleInput.addEventListener('blur', async () => {
       const val = titleInput.value.trim();
       if (val && val !== list.title) {
-        await DB.renameList(list.id, val);
+        _snapshot(); await DB.renameList(list.id, val);
         list.title = val;
         refreshCountBadge(list.id);
       } else {
@@ -1813,7 +1852,7 @@ const App = (() => {
     // Delete list
     delListBtn.addEventListener('click', async () => {
       if (!confirm(`Supprimer la liste "${list.title}" et toutes ses cartes ?`)) return;
-      await DB.deleteList(list.id);
+      _snapshot(); await DB.deleteList(list.id);
       wrap.remove();
       refreshHeaderInfo();
     });
@@ -1833,6 +1872,7 @@ const App = (() => {
     async function submitCard() {
       const text = newCardTA.value.trim();
       if (!text) return;
+      _snapshot();
       const card   = await DB.createCard(list.id, text);
       const cardEl = buildCard(card, list.done);
       cardsEl.appendChild(cardEl);
@@ -1844,6 +1884,7 @@ const App = (() => {
 
     // Done toggle
     doneToggle.addEventListener('click', async () => {
+      _snapshot();
       const updated = await DB.toggleListDone(list.id);
       if (!updated) return;
       list.done = updated.done;
@@ -1901,7 +1942,7 @@ const App = (() => {
         return children.slice(0, idx).filter(c => c.matches('.list')).length;
       },
     }, async (listId, _, newPos) => {
-      await DB.reorderList(listId, newPos);
+      _snapshot(); await DB.reorderList(listId, newPos);
     });
 
     return wrap;
@@ -1945,6 +1986,7 @@ const App = (() => {
     async function submitList() {
       const title = input.value.trim();
       if (!title) return;
+      _snapshot();
       const list   = await DB.createList(title);
       const listEl = await buildList(list);
       boardEl.insertBefore(listEl, widget);
@@ -2105,7 +2147,7 @@ const App = (() => {
   boardNameInput.addEventListener('blur', async () => {
     const val = boardNameInput.value.trim();
     if (val) {
-      await DB.renameBoard(val);
+      _snapshot(); await DB.renameBoard(val);
       document.title = `KanbanJS \u00b7 ${val}`;
     } else {
       boardNameInput.value = (await DB.getBoard()).name;
@@ -2339,6 +2381,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     let oldId = existing ? existing.id : null;
 
     // 1. Écritures DB (avant toute manipulation DOM)
+    _snapshot();
     if (existing) await DB.deleteList(existing.id);
     const list = await DB.createList('Suggestions');
     await DB.reorderList(list.id, 0);
@@ -2528,7 +2571,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     _clipboard = { type: 'card', text: textEl.textContent, notes: notesEl ? notesEl.value : '' };
     const listEl  = _selCard.closest('.list');
     const nextDom = _selCard.nextElementSibling || _selCard.previousElementSibling;
-    await DB.deleteCard(_selCard.dataset.id);
+    _snapshot(); await DB.deleteCard(_selCard.dataset.id);
     _selCard.remove();
     if (nextDom && nextDom.matches('.card')) selectCard(nextDom);
     else if (listEl) { selectList(listEl); _firstCard(listEl); }
@@ -2547,6 +2590,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     if (!_clipboard) return;
     if (_clipboard.type === 'card') {
       if (!_selList || !_selList.isConnected) return;
+      _snapshot();
       const listId = _selList.dataset.id;
       const done   = _selList.dataset.done === 'true';
       const card   = await DB.createCard(listId, _clipboard.text);
@@ -2558,6 +2602,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       refreshCountBadge(listId);
       refreshHeaderInfo();
     } else if (_clipboard.type === 'list') {
+      _snapshot();
       const list  = await DB.createList(_clipboard.title);
       if (_selList && _selList.isConnected) {
         const lists = [...boardEl.querySelectorAll('.list')];
@@ -2594,7 +2639,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     const id    = _selList.dataset.id;
     const lists = [...boardEl.querySelectorAll('.list')];
     const idx   = lists.indexOf(_selList);
-    await DB.deleteList(id);
+    _snapshot(); await DB.deleteList(id);
     _selList.remove();
     if (lists.length > 1) {
       const next = lists[idx + 1] || lists[idx - 1];
@@ -2657,13 +2702,14 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
   Object.assign(BINDINGS, {
     h:      { fn: prevCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
     l:      { fn: nextCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
-    j:      { fn: nextList,     when: () => !_inInput() },
-    k:      { fn: prevList,     when: () => !_inInput() },
+    j:      { fn: prevList,     when: () => !_inInput() },
+    k:      { fn: nextList,     when: () => !_inInput() },
     n:      { fn: newCardAtSel, when: () => _selList && _selList.isConnected && !_inInput() },
     r:      { fn: _renameCard,  when: () => _selCard && _selCard.isConnected && !_inInput() },
     e:      { fn: _openNotes,   when: () => _selCard && _selCard.isConnected && !_inInput() },
     x:      { fn: cutCard,      when: () => _selCard && _selCard.isConnected && !_inInput() },
     y:      { fn: copyCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
+    u:      { fn: _undo,        when: () => !_inInput() },
     p:      { fn: _paste,       when: () => _selList && _selList.isConnected && _clipboard && _clipboard.type === 'card' && !_inInput() },
     N:      { fn: _newList,       when: () => !_inInput() },
     E:      { fn: renameList,     when: () => _selList && _selList.isConnected && !_inInput() },
@@ -2675,6 +2721,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
   });
 
   document.addEventListener('keydown', e => {
+    if ((e.key === 'r' || e.key === 'R') && (e.ctrlKey || e.metaKey) && !_inInput()) { e.preventDefault(); _redo(); return; }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (document.querySelector('.modal-overlay.open, .search-overlay.open')) return;
     const action = BINDINGS[e.key];
@@ -2762,7 +2809,9 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     const shortcuts = make('div', 'cheatsheet-shortcuts');
     shortcuts.appendChild(cols);
     shortcuts.appendChild(rows('Autres', [
-      [['Ctrl','K'], 'Rechercher une carte'],
+      [['u'],         'Annuler'],
+      [['Ctrl','R'],  'R\u00E9tablir'],
+      [['Ctrl','K'],  'Rechercher une carte'],
       [['1','9'],     'Focus liste 1 \u00E0 9'],
       [['?'],         'Aide'],
       [['Esc'],       'D\u00E9s\u00E9lectionner'],
