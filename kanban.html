@@ -1310,9 +1310,13 @@ const DB = (() => {
       others.forEach((l, i) => { l.position = i; });
       _save();
     },
-    async toggleListDone(id) {
+    async toggleListDone(id, doneAt) {
       const l = _state.lists.find(l => l.id === id);
-      if (l) { l.done = !l.done; _save(); }
+      if (l) { l.done = !l.done; }
+      if (doneAt !== undefined) {
+        _state.cards.filter(c => c.listId === id).forEach(c => { c.doneAt = doneAt; });
+      }
+      _save();
       return l ? _clone(l) : null;
     },
     async toggleCollapsed(id) {
@@ -1803,8 +1807,8 @@ const App = (() => {
       skip(el) { return el.classList.contains('editing'); },
     }, async (cardId, toListId, newPos) => {
       const sourceListId = wrap.dataset.listId;
-      wrap.dataset.listId = toListId;
       await mutate(() => DB.moveCard(cardId, toListId, newPos));
+      wrap.dataset.listId = toListId;
       const destListEl = boardEl.querySelector('.list[data-id="' + toListId + '"]');
       const isDestDone = destListEl && destListEl.dataset.done === 'true';
       const wasDone = wrap.classList.contains('card-done');
@@ -1907,6 +1911,7 @@ const App = (() => {
     // Delete list
     delListBtn.addEventListener('click', async () => {
       if (!confirm(`Supprimer la liste "${list.title}" et toutes ses cartes ?`)) return;
+      if (_selCard && _selCard.closest('.list') === wrap) selectCard(null);
       await mutate(() => DB.deleteList(list.id));
       wrap.remove();
       await refreshHeaderInfo();
@@ -1939,14 +1944,15 @@ const App = (() => {
 
     // Done toggle
     doneToggle.addEventListener('click', async () => {
+      const willBeDone = !list.done;
+      const now = willBeDone ? new Date().toISOString() : null;
       await _snapshot();
-      const updated = await DB.toggleListDone(list.id);
+      const updated = await DB.toggleListDone(list.id, now);
       if (!updated) return;
       list.done = updated.done;
       wrap.dataset.done = updated.done ? 'true' : 'false';
       doneToggle.dataset.done = updated.done ? 'true' : 'false';
       doneToggle.classList.toggle('active', updated.done);
-      const now = updated.done ? new Date().toISOString() : null;
       cardsEl.querySelectorAll('.card').forEach(c => {
         c.classList.toggle('card-done', updated.done);
         const atEl = c.querySelector('.card-done-at');
@@ -1957,7 +1963,6 @@ const App = (() => {
           if (atEl) atEl.textContent = '';
         }
       });
-      await DB.setCardsDoneAt(list.id, now);
       await refreshCountBadge(list.id);
       await refreshHeaderInfo();
     });
@@ -2205,6 +2210,7 @@ const App = (() => {
           alert('Fichier JSON invalide.');
         }
       };
+      reader.onerror = () => { alert('Erreur de lecture du fichier.'); };
       reader.readAsText(file);
       importFile.value = '';
     });
@@ -2642,6 +2648,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
   async function cutCard() {
     if (!_selCard || !_selCard.isConnected) return;
     const textEl  = _selCard.querySelector('.card-text');
+    if (!textEl) return;
     const notesEl = _selCard.querySelector('.card-notes');
     Clipboard.cutCard({ text: textEl.textContent, notes: notesEl ? notesEl.value : '' });
     const listEl  = _selCard.closest('.list');
@@ -2657,6 +2664,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
   function copyCard() {
     if (!_selCard || !_selCard.isConnected) return;
     const textEl  = _selCard.querySelector('.card-text');
+    if (!textEl) return;
     const notesEl = _selCard.querySelector('.card-notes');
     Clipboard.copyCard({ text: textEl.textContent, notes: notesEl ? notesEl.value : '' });
   }
@@ -2707,9 +2715,11 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
   async function cutList() {
     if (!_selList || !_selList.isConnected) return;
-    const title = _selList.querySelector('.list-title').value;
+    const titleEl = _selList.querySelector('.list-title');
+    if (!titleEl) return;
+    const title = titleEl.value;
     const cards = [..._selList.querySelectorAll('.card')].map(c => ({
-      text:  c.querySelector('.card-text').textContent,
+      text:  c.querySelector('.card-text')?.textContent || '',
       notes: c.querySelector('.card-notes')?.value || '',
     }));
     Clipboard.cutList({ title, cards });
@@ -2729,9 +2739,11 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
   function copyList() {
     if (!_selList || !_selList.isConnected) return;
-    const title = _selList.querySelector('.list-title').value;
+    const titleEl = _selList.querySelector('.list-title');
+    if (!titleEl) return;
+    const title = titleEl.value;
     const cards = [..._selList.querySelectorAll('.card')].map(c => ({
-      text:  c.querySelector('.card-text').textContent,
+      text:  c.querySelector('.card-text')?.textContent || '',
       notes: c.querySelector('.card-notes')?.value || '',
     }));
     Clipboard.copyList({ title, cards });
@@ -2794,7 +2806,11 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     Y:      { fn: copyList,       when: () => _selList && _selList.isConnected && !_inInput() },
     P:      { fn: _paste,         when: () => !Clipboard.isEmpty() && !_inInput() },
     D:      { fn: toggleDoneList, when: () => _selList && _selList.isConnected && !_inInput() },
-    Escape: { fn: clearSelection, when: () => (_selCard || _selList) && !_inInput() && !document.querySelector('.cheatsheet-overlay.open') },
+    Escape: { fn: () => {
+      const cs = document.querySelector('.cheatsheet-overlay.open');
+      if (cs) { cs.classList.remove('open'); return; }
+      if (_selCard || _selList) clearSelection();
+    }, when: () => !_inInput() },
   });
 
   document.addEventListener('keydown', e => {
@@ -2910,9 +2926,6 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     overlay.addEventListener('click', e => {
       if (e.target === overlay) toggle();
     });
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && overlay.classList.contains('open')) toggle();
-    });
 
     BINDINGS['?'] = { fn: toggle, when: () => !_inInput() };
   })();
@@ -2948,9 +2961,11 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       if (!q) return;
       const matches = [];
       boardEl.querySelectorAll('.list').forEach(list => {
-        const listTitle = list.querySelector('.list-title').value;
+        const listTitleEl = list.querySelector('.list-title');
+        const listTitle = listTitleEl ? listTitleEl.value : '';
         list.querySelectorAll('.card').forEach(card => {
-          const text  = card.querySelector('.card-text').textContent;
+          const textEl = card.querySelector('.card-text');
+          const text = textEl ? textEl.textContent : '';
           const notes = card.querySelector('.card-notes')?.value || '';
           if (fuzzy(text, q) || fuzzy(notes, q) || fuzzy(listTitle, q)) {
             matches.push({ card, list, listTitle, text });

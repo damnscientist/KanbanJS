@@ -28,7 +28,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Sélection visuelle : bordure accent, actions toujours visibles sur carte sélectionnée
 - Ignore automatiquement quand un input/textarea a le focus ou une modale est ouverte
 - `Ctrl+K` : recherche fuzzy sur les cartes du board (texte, notes, titre de liste)
-- `u` undo, `Ctrl+R` redo : 30 niveaux de snapshots (session uniquement)
+- `u` undo, `Ctrl+Y` redo : 30 niveaux de snapshots (session uniquement)
 
 ### Listes
 - Création inline (bouton + formulaire "Ajouter une liste")
@@ -125,6 +125,18 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Undo/Redo utilisent `DB.exportJSON()` / `DB.restoreJSON()` au lieu de `localStorage` direct.
 - Reset et bouton de récupération utilisent `DB.reset()` au lieu de `localStorage.removeItem(DB.KEY)`.
 
+## Corrections récentes (audit 2026-06-21 — bugs)
+
+- **Bug 1 — Guard DOM null** : ajout de guards `if (!el) return;` / optional chaining sur les `querySelector` dans `cutCard`, `copyCard`, `cutList`, `copyList` et la boucle de recherche. Évite des TypeError si le DOM est modifié concurrentiellement.
+- **Bug 2 — Undo null** : déjà corrigé (le code utilise `DB.exportJSON()` et non `localStorage.getItem(DB.KEY)` depuis l'audit architecture).
+- **Bug 3 — Double _save() toggle done** : `DB.toggleListDone(id, doneAt)` accepte maintenant un second paramètre optionnel pour setter `doneAt` sur toutes les cartes en une seule écriture. Le handler passe `now` ou `null`, supprimant l'appel redondant à `DB.setCardsDoneAt()`.
+- **Bug 4 — FileReader onerror** : ajout de `reader.onerror` avec `alert('Erreur de lecture du fichier.')` sur l'import JSON.
+- **Bug 5 — Ctrl+R dans AGENTS.md** : corrigé en `Ctrl+Y` (convention standard, `Ctrl+R` est le rechargement du navigateur).
+- **Bug 6 — Collapse undo** : déjà corrigé (le handler utilise `mutate()` depuis l'audit architecture).
+- **Bug 7 — Centralisation Escape** : le handler Escape dédié de la cheatsheet est supprimé. Le BINDINGS `Escape` gère maintenant les deux cas : fermer la cheatsheet si ouverte, sinon désélectionner.
+- **Bug 8 — _selCard orphelin** : le handler de suppression de liste (`delListBtn`) appelle `selectCard(null)` si la carte sélectionnée appartient à la liste supprimée.
+- **Bug 9 — Ordre DnD DOM/DB** : `wrap.dataset.listId = toListId` déplacé après `await mutate(() => DB.moveCard(...))` pour éviter une désynchronisation DOM/DB si la DB échoue.
+
 ## Corrections récentes (audit 2026-06-20)
 - Raccourcis clavier vim-like : minuscule = carte, majuscule = liste. Navigation `h`/`l`/`j`/`k` + actions `n`/`r`/`e`/`x`/`y`/`p` + `N`/`E`/`D`/`X`/`Y`/`P` + `1-9` + `Esc` + `?` aide (~160 LOC)
 - Sélection visuelle carte/liste : bordure accent, actions visibles en permanence sur carte sélectionnée
@@ -138,7 +150,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Cheatsheet enrichie : 5 principes kanban anti-procrastination en style kbd, section philosophique masquée sur mobile, raccourcis masqués sur mobile, lien `?` dans le header
 - Header mobile : `overflow-x: auto` (les boutons restent accessibles, la barre de progression est visible)
 - Bugfixes : bleed-through clavier sur overlay recherche, Escape cheatsheet vidait la sélection, éditeur carte bloqué si texte vide, import quota, _selCard orphelin après suppression UI, contextmenu DnD non retiré
-- Undo/Redo : `u` undo, `Ctrl+R` redo, 30 snapshots (session uniquement)
+- Undo/Redo : `u` undo, `Ctrl+Y` redo, 30 snapshots (session uniquement)
 - Repli des listes : bouton ▾/▸ pour masquer cartes + footer, état persisté
 - Liste "Waiting" ajoutée par défaut (kanban canonique : Backlog → In Progress → Waiting → Done)
 
