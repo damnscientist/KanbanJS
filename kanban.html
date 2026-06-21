@@ -1640,6 +1640,44 @@ const App = (() => {
     if (el) el.remove();
   }
 
+  function toggleForm(btn, form, input, open) {
+    if (open) {
+      btn.style.display = 'none';
+      form.classList.add('open');
+      input.focus();
+    } else {
+      input.value = '';
+      if (input.tagName === 'TEXTAREA') input.style.height = '';
+      form.classList.remove('open');
+      btn.style.display = '';
+    }
+  }
+
+  function registerOverlay(overlay, closeFn) {
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeFn(); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && overlay.classList.contains('open')) closeFn();
+    });
+  }
+
+  function formatDoneAt(iso) {
+    const d = new Date(iso);
+    return 'Terminé le ' + d.toLocaleDateString('fr-FR') + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function extractCardData(el) {
+    const textEl = el.querySelector('.card-text');
+    const notesEl = el.querySelector('.card-notes');
+    return { text: textEl ? textEl.textContent : '', notes: notesEl ? notesEl.value : '' };
+  }
+
+  function extractListData(el) {
+    const titleEl = el.querySelector('.list-title');
+    const title = titleEl ? titleEl.value : '';
+    const cards = [...el.querySelectorAll('.card')].map(c => extractCardData(c));
+    return { title, cards };
+  }
+
   // ── Undo / Redo ──────────────────────────────────────────
   const MAX_UNDO = 30;
   const UK = 'kanbanjs:undo';
@@ -1696,10 +1734,7 @@ const App = (() => {
     textEl.textContent = card.text;
 
     const doneAtEl = make('div', 'card-done-at');
-    if (card.doneAt) {
-      const d = new Date(card.doneAt);
-      doneAtEl.textContent = 'Terminé le ' + d.toLocaleDateString('fr-FR') + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-    }
+    if (card.doneAt) doneAtEl.textContent = formatDoneAt(card.doneAt);
 
     // Hover actions
     const actionsEl = make('div', 'card-actions');
@@ -1824,10 +1859,7 @@ const App = (() => {
         const now = new Date().toISOString();
         await DB.setCardDoneAt(cardId, now);
         const atEl = wrap.querySelector('.card-done-at');
-        if (atEl) {
-          const d = new Date(now);
-          atEl.textContent = 'Terminé le ' + d.toLocaleDateString('fr-FR') + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-        }
+        if (atEl) atEl.textContent = formatDoneAt(now);
       } else if (!isDestDone && wasDone) {
         await DB.setCardDoneAt(cardId, null);
         const atEl = wrap.querySelector('.card-done-at');
@@ -1925,22 +1957,12 @@ const App = (() => {
     });
 
     // Add card form open/close
-    function openCardForm() {
-      addCardBtn.style.display = 'none';
-      newCardForm.classList.add('open');
-      newCardTA.focus();
-    }
-    function closeCardForm() {
-      newCardTA.value        = '';
-      newCardTA.style.height = '';
-      newCardForm.classList.remove('open');
-      addCardBtn.style.display = '';
-    }
+    function openCardForm()  { toggleForm(addCardBtn, newCardForm, newCardTA, true); }
+    function closeCardForm() { toggleForm(addCardBtn, newCardForm, newCardTA, false); }
     async function submitCard() {
       const text = newCardTA.value.trim();
       if (!text) return;
-      await _snapshot();
-      const card   = await DB.createCard(list.id, text);
+      const card   = await mutate(() => DB.createCard(list.id, text));
       const cardEl = buildCard(card, list.done);
       cardsEl.appendChild(cardEl);
       closeCardForm();
@@ -1953,8 +1975,7 @@ const App = (() => {
     doneToggle.addEventListener('click', async () => {
       const willBeDone = !list.done;
       const now = willBeDone ? new Date().toISOString() : null;
-      await _snapshot();
-      const updated = await DB.toggleListDone(list.id, now);
+      const updated = await mutate(() => DB.toggleListDone(list.id, now));
       if (!updated) return;
       list.done = updated.done;
       wrap.dataset.done = updated.done ? 'true' : 'false';
@@ -1964,8 +1985,7 @@ const App = (() => {
         c.classList.toggle('card-done', updated.done);
         const atEl = c.querySelector('.card-done-at');
         if (updated.done && now) {
-          const d = new Date(now);
-          if (atEl) atEl.textContent = 'Terminé le ' + d.toLocaleDateString('fr-FR') + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+          if (atEl) atEl.textContent = formatDoneAt(now);
         } else {
           if (atEl) atEl.textContent = '';
         }
@@ -2049,21 +2069,12 @@ const App = (() => {
     widget.append(addListBtn, form);
     boardEl.appendChild(widget);
 
-    function openForm() {
-      addListBtn.style.display = 'none';
-      form.classList.add('open');
-      input.focus();
-    }
-    function closeForm() {
-      input.value = '';
-      form.classList.remove('open');
-      addListBtn.style.display = '';
-    }
+    function openForm()  { toggleForm(addListBtn, form, input, true); }
+    function closeForm() { toggleForm(addListBtn, form, input, false); }
     async function submitList() {
       const title = input.value.trim();
       if (!title) return;
-      await _snapshot();
-      const list   = await DB.createList(title);
+      const list   = await mutate(() => DB.createList(title));
       const listEl = buildList(list, []);
       boardEl.insertBefore(listEl, widget);
       closeForm();
@@ -2130,8 +2141,7 @@ const App = (() => {
 
     document.getElementById('configBtn').addEventListener('click', open);
     document.getElementById('configModalClose').addEventListener('click', close);
-    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && overlay.classList.contains('open')) close(); });
+    registerOverlay(overlay, close);
 
     document.getElementById('cfgSave').addEventListener('click', () => {
       const provider = providerEl.value;
@@ -2461,11 +2471,13 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     let oldId = existing ? existing.id : null;
 
     // 1. Écritures DB (avant toute manipulation DOM)
-    await _snapshot();
-    if (existing) await DB.deleteList(existing.id);
-    const list = await DB.createList('Suggestions');
-    await DB.reorderList(list.id, 0);
-    await Promise.all(tasks.map(t => DB.createCard(list.id, t)));
+    const list = await mutate(async () => {
+      if (existing) await DB.deleteList(existing.id);
+      const l = await DB.createList('Suggestions');
+      await DB.reorderList(l.id, 0);
+      await Promise.all(tasks.map(t => DB.createCard(l.id, t)));
+      return l;
+    });
     const cards = await DB.getCards(list.id);
 
     // 2. Mise à jour DOM
@@ -2526,10 +2538,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
     fab.addEventListener('click', open);
     document.getElementById('decomposeModalClose').addEventListener('click', close);
-    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && overlay.classList.contains('open')) close();
-    });
+    registerOverlay(overlay, close);
 
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); btn.click(); }
@@ -2654,10 +2663,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
   async function cutCard() {
     if (!_selCard || !_selCard.isConnected) return;
-    const textEl  = _selCard.querySelector('.card-text');
-    if (!textEl) return;
-    const notesEl = _selCard.querySelector('.card-notes');
-    Clipboard.cutCard({ text: textEl.textContent, notes: notesEl ? notesEl.value : '' });
+    Clipboard.cutCard(extractCardData(_selCard));
     const listEl  = _selCard.closest('.list');
     const nextDom = _selCard.nextElementSibling || _selCard.previousElementSibling;
     await mutate(() => DB.deleteCard(_selCard.dataset.id));
@@ -2670,10 +2676,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
   function copyCard() {
     if (!_selCard || !_selCard.isConnected) return;
-    const textEl  = _selCard.querySelector('.card-text');
-    if (!textEl) return;
-    const notesEl = _selCard.querySelector('.card-notes');
-    Clipboard.copyCard({ text: textEl.textContent, notes: notesEl ? notesEl.value : '' });
+    Clipboard.copyCard(extractCardData(_selCard));
   }
 
   async function _paste() {
@@ -2681,10 +2684,9 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     const data = Clipboard.paste();
     if (data.type === 'card') {
       if (!_selList || !_selList.isConnected) return;
-      await _snapshot();
       const listId = _selList.dataset.id;
       const done   = _selList.dataset.done === 'true';
-      const card   = await DB.createCard(listId, data.text);
+      const card   = await mutate(() => DB.createCard(listId, data.text));
       if (data.notes) await DB.updateCardNotes(card.id, data.notes);
       const cardsEl = _selList.querySelector('.cards');
       const cardEl  = buildCard(card, done);
@@ -2693,8 +2695,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       await refreshCountBadge(listId);
       await refreshHeaderInfo();
     } else if (data.type === 'list') {
-      await _snapshot();
-      const list  = await DB.createList(data.title);
+      const list  = await mutate(() => DB.createList(data.title));
       if (_selList && _selList.isConnected) {
         const lists = [...boardEl.querySelectorAll('.list')];
         const idx   = lists.indexOf(_selList);
@@ -2722,14 +2723,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
   async function cutList() {
     if (!_selList || !_selList.isConnected) return;
-    const titleEl = _selList.querySelector('.list-title');
-    if (!titleEl) return;
-    const title = titleEl.value;
-    const cards = [..._selList.querySelectorAll('.card')].map(c => ({
-      text:  c.querySelector('.card-text')?.textContent || '',
-      notes: c.querySelector('.card-notes')?.value || '',
-    }));
-    Clipboard.cutList({ title, cards });
+    Clipboard.cutList(extractListData(_selList));
     const id    = _selList.dataset.id;
     const lists = [...boardEl.querySelectorAll('.list')];
     const idx   = lists.indexOf(_selList);
@@ -2746,14 +2740,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
   function copyList() {
     if (!_selList || !_selList.isConnected) return;
-    const titleEl = _selList.querySelector('.list-title');
-    if (!titleEl) return;
-    const title = titleEl.value;
-    const cards = [..._selList.querySelectorAll('.card')].map(c => ({
-      text:  c.querySelector('.card-text')?.textContent || '',
-      notes: c.querySelector('.card-notes')?.value || '',
-    }));
-    Clipboard.copyList({ title, cards });
+    Clipboard.copyList(extractListData(_selList));
   }
 
   function toggleDoneList() {

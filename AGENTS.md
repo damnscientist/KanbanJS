@@ -197,7 +197,19 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Tuto : liste "Tuto" avec cartes-exemples dans `DB._default` au lieu d'une carte flottante
 - DnD : handler `pointercancel` + `cleanup()` défensif (libération capture persistante)
 
+## Corrections récentes (audit 2026-06-21 — qualité/DRY)
+
+- **Point 1 — `toggleForm(btn, form, input, open)`** : helper réutilisable pour le pattern open/close de formulaire. Remplace `openCardForm`/`closeCardForm` dans `buildList` et `openForm`/`closeForm` dans `buildAddListWidget`.
+- **Point 2 — `registerOverlay(overlay, closeFn)`** : helper qui enregistre les handlers click (fermeture au clic extérieur) et keydown (Escape) pour une modale/overlay. Utilisé par Config modal, Decompose modal, Cheatsheet, Search.
+- **Point 3 — `formatDoneAt(iso)`** : formatage de date unifié (3 occurrences → 1 fonction). Format : "Terminé le JJ/MM/AAAA à HH:MM".
+- **Point 4 — `extractCardData(el)` / `extractListData(el)`** : extraction des données carte/liste depuis le DOM. Utilisées par `cutCard`, `copyCard`, `cutList`, `copyList`.
+- **Point 5 — Uniformisation `mutate()`** : tous les appels `_snapshot()` + DB mutante passent désormais par `mutate(fn)`. Suppression de 7 `_snapshot()` raw (submitCard, doneToggle, submitList, _paste ×2, createSuggestionsList).
+- **Points 6-7-8-9-10** : non appliqués. Le CSS a déjà été traité lors de l'audit visuel. La délégation d'événements (point 9) et le rebuild board (point 8) apporteraient un risque de régression disproportionné pour le gain. `esc()` est légitime tel quel (sécurité XSS).
+
 ## Pour reprendre le développement
+
+- Les helpers `toggleForm`, `registerOverlay`, `formatDoneAt`, `extractCardData`, `extractListData` sont dans le scope App, juste après `removeListDom`.
+- `mutate(fn)` est le seul point d'entrée pour les snapshots undo. Ne jamais appeler `_snapshot()` directement — utiliser `await mutate(() => DB.xxx(...))`.
 
 - L'ordre des modales et du debug suit le flow : config → décompose
 - Le prompt système est dans `PROMPT_SYSTEM` (template literal, substitution `{{TASK}}`)
@@ -211,7 +223,6 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - `buildCard(card, done)` accepte un second paramètre pour le style initial
 - Les cartes ont un champ `notes` (chaîne) persisté via `updateCardNotes`, éditable inline (textarea toggleable)
 - Les cartes ont un champ `doneAt` (ISO string ou null) stocké automatiquement quand glissées dans une liste "terminée"
-- `mutate(fn)` fait un snapshot undo puis exécute `fn()` ; tout appel DB mutateur doit passer par ce helper
 - `refreshHeaderInfo()` et `refreshCountBadge(id)` sont async, lisent les données via DB (pas le DOM)
 - `Clipboard` est un objet (plus un `let _clipboard`), méthodes : `copyCard/cutCard/copyList/cutList/paste/clear/isEmpty/type`
 - Le thème est capturé au démarrage de App via `const Theme = window.__themeAPI`, plus aucun accès à `window.__themeAPI` dans le code métier
