@@ -1595,20 +1595,6 @@ const App = (() => {
     _redoStack = [];
   }
 
-  async function _rebuild() {
-    boardEl.querySelectorAll('.list').forEach(l => l.remove());
-    const addWidget = boardEl.querySelector(':scope > div[style*="display:contents"]');
-    if (addWidget) addWidget.remove();
-    const lists = await DB.getLists();
-    for (const l of lists) {
-      boardEl.appendChild(await buildList(l));
-      refreshCountBadge(l.id);
-    }
-    buildAddListWidget();
-    clearSelection();
-    refreshHeaderInfo();
-  }
-
   function _undo() {
     if (!_undoStack.length) return;
     _redoStack.push(localStorage.getItem(DB.KEY));
@@ -2709,7 +2695,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     e:      { fn: _openNotes,   when: () => _selCard && _selCard.isConnected && !_inInput() },
     x:      { fn: cutCard,      when: () => _selCard && _selCard.isConnected && !_inInput() },
     y:      { fn: copyCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
-    u:      { fn: _undo,        when: () => !_inInput() },
+    u:      { fn: _undo,        when: () => _undoStack.length && !_inInput() },
     p:      { fn: _paste,       when: () => _selList && _selList.isConnected && _clipboard && _clipboard.type === 'card' && !_inInput() },
     N:      { fn: _newList,       when: () => !_inInput() },
     E:      { fn: renameList,     when: () => _selList && _selList.isConnected && !_inInput() },
@@ -2721,7 +2707,10 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
   });
 
   document.addEventListener('keydown', e => {
-    if ((e.key === 'r' || e.key === 'R') && (e.ctrlKey || e.metaKey) && !_inInput()) { e.preventDefault(); _redo(); return; }
+    if ((e.key === 'r' || e.key === 'R') && (e.ctrlKey || e.metaKey) && !_inInput()) {
+      if (_redoStack.length) { e.preventDefault(); _redo(); }
+      return;
+    }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (document.querySelector('.modal-overlay.open, .search-overlay.open')) return;
     const action = BINDINGS[e.key];
