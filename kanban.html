@@ -2476,6 +2476,19 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     log('--- JSON PARSÉ ---');
     log(JSON.stringify(data, null, 2).slice(0, 3000));
 
+    let tokens = 0;
+    if (provider === 'openai') {
+      const u = data.usage;
+      if (u) tokens = (u.prompt_tokens || 0) + (u.completion_tokens || 0);
+    } else if (provider === 'anthropic') {
+      const u = data.usage;
+      if (u) tokens = (u.input_tokens || 0) + (u.output_tokens || 0);
+    } else if (provider === 'google') {
+      const u = data.usageMetadata;
+      if (u) tokens = (u.promptTokenCount || 0) + (u.candidatesTokenCount || 0);
+    }
+    log('Tokens      : ' + tokens);
+
     let content;
 
     if (provider === 'openai') {
@@ -2505,17 +2518,18 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
     if (!tasks || tasks.length === 0) throw new Error('Aucune sous-tâche extraite. Voir debug \u2193');
 
-    return tasks;
+    return { tasks, tokens };
   }
 
-  async function createSuggestionsList(tasks) {
+  async function createSuggestionsList(tasks, tokens) {
     const allLists = await DB.getLists();
-    const existing = allLists.find(l => l.title === 'Suggestions');
+    const existing = allLists.find(l => l.title.startsWith('IA '));
     let oldId = existing ? existing.id : null;
+    const listTitle = 'IA ' + tokens + ' tokens';
 
     const list = await mutate(() => DB.batch(async () => {
       if (existing) await DB.deleteList(existing.id);
-      const l = await DB.createList('Suggestions');
+      const l = await DB.createList(listTitle);
       await DB.reorderList(l.id, 0);
       await Promise.all(tasks.map(t => DB.createCard(l.id, t)));
       return l;
@@ -2596,10 +2610,10 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       debugLines.length = 0;
 
       try {
-        const tasks = await queryAI(task, debugLog);
+        const { tasks, tokens } = await queryAI(task, debugLog);
         renderDebug();
         if (!tasks || tasks.length === 0) throw new Error('Aucune sous-tâche générée.');
-        await createSuggestionsList(tasks);
+        await createSuggestionsList(tasks, tokens);
         close();
       } catch (err) {
         renderDebug();
