@@ -1391,7 +1391,7 @@ const DB = (() => {
     // ── Batching ────────────────────────────────────────────
     async batch(fn) {
       _saving = false;
-      try { await fn(); } finally { _saving = true; _save(); }
+      try { return await fn(); } finally { _saving = true; _save(); }
     },
 
     // ── Export / Import / Reset ──────────────────────────────
