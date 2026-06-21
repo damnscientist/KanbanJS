@@ -1,6 +1,6 @@
 # KanbanJS — Projet anti-procrastination
 
-Fichier unique `kanban.html` (~3010 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
+Fichier unique `kanban.html` (~3078 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
 
 ## Concept
 
@@ -78,7 +78,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 | Module | Responsabilité | API publique |
 |---|---|---|
 | `initTheme` | IIFE, lit/applique/persiste le thème | lecture au load |
-| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, toggleCollapsed, getCards, createCard, updateCard, updateCardNotes, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard` |
+| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, toggleCollapsed, getCards, getAllCards, createCard, updateCard, updateCardNotes, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard, exportJSON, importJSON, reset, restoreJSON` |
 | `DnD` | Moteur de drag & drop générique | `start(dragEl, id, { ghostEl?, ghostClass?, phClass?, getZone, getAfter, getPos, skip? }, onDrop)` |
 | `App` | UI Kanban | `init()` boot la session |
 
@@ -111,6 +111,19 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 ### Limites techniques
 - **Pas de déploiement** — fichier local, provoque des erreurs CORS si ouvert en `file://` (l'API fetch y est bloquée, à servir via un serveur local)
 - **Fournisseur IA centralisé** : tout le branchement fournisseur est dans `queryAI` (switch provider → body/headers/parsing)
+
+## Corrections récentes (audit 2026-06-21 — architecture)
+
+- **Point 1 — Frontières DB** : ajout des méthodes `DB.exportJSON()`, `DB.importJSON(json)`, `DB.reset()`, `DB.restoreJSON(json)`, `DB.getAllCards()`. Plus aucun accès à `localStorage` / `DB.KEY` hors du module DB. L'import passe par `DB.importJSON()` avec validation + gestion QuotaExceededError.
+- **Point 2 — DOM source de vérité** : `refreshHeaderInfo()` et `refreshCountBadge()` sont async et lisent désormais les données via `DB.getLists()`, `DB.getAllCards()`, `DB.getCards(id)` au lieu de `querySelectorAll('.card')`.
+- **Point 3 — Init parallèle** : `init()` utilise `DB.getAllCards()` + `lists.forEach(l => buildList(l, cards))` au lieu d'un `for...of await`. Une seule lecture DB au lieu de N.
+- **Point 4 — Uniformisation sync** : `buildList(list, cards)` est maintenant synchrone. Les cartes sont pré-fetchées par l'appelant (`DB.getCards()` ou `DB.getAllCards()`).
+- **Point 5 — Presse-papier encapsulé** : `Clipboard` remplace la variable globale `_clipboard`. Méthodes : `copyCard/cutCard/copyList/cutList/paste/clear/isEmpty/type`.
+- **Point 6 — mutate helper** : `mutate(fn)` fait `_snapshot()` puis exécute `fn()`. Remplace les ~15 `_snapshot(); await DB.xxx()`. Le collapse toggle bénéficie maintenant d'un undo. `_snapshot()` utilise `DB.exportJSON()` au lieu de `localStorage.getItem(DB.KEY)`.
+- **Point 7 — Theme API** : `const Theme = window.__themeAPI` capturé au début de App. La modale configuration utilise `Theme` au lieu de `window.__themeAPI`.
+- **Point 8 — Helper DOM** : `removeListDom(listId)` extrait la suppression DOM répétée. Utilisé dans `createSuggestionsList`.
+- Undo/Redo utilisent `DB.exportJSON()` / `DB.restoreJSON()` au lieu de `localStorage` direct.
+- Reset et bouton de récupération utilisent `DB.reset()` au lieu de `localStorage.removeItem(DB.KEY)`.
 
 ## Corrections récentes (audit 2026-06-20)
 - Raccourcis clavier vim-like : minuscule = carte, majuscule = liste. Navigation `h`/`l`/`j`/`k` + actions `n`/`r`/`e`/`x`/`y`/`p` + `N`/`E`/`D`/`X`/`Y`/`P` + `1-9` + `Esc` + `?` aide (~160 LOC)
@@ -166,12 +179,18 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - La config API (provider, endpoint, apiKey, model) est stockée en localStorage, lue par `readAIConfig()` dans App
 - Le fournisseur est branché dans `queryAI` via un switch (`'openai'` / `'anthropic'` / `'google'`), chaque branche construit body + headers + parsing de réponse
 - Le board est initialisé avec 5 listes par défaut via `DB._default` (dont "Tuto" avec cartes-exemples)
-- `buildList` est asynchrone (lit les cartes depuis DB)
-- `buildCard` est synchrone (reçoit une carte déjà construite)
+- `buildList(list, cards)` est synchrone — les cartes sont passées en paramètre (pré-fetchées par l'appelant)
+- `buildCard(card, done)` est synchrone (reçoit une carte déjà construite)
+- Les deux fonctions `buildList` et `buildCard` sont maintenant synchrones
 - Les listes ont un champ `done` (booléen) ; si vrai, leurs cartes affichent `.card-done` (barré + grisé)
 - `buildCard(card, done)` accepte un second paramètre pour le style initial
 - Les cartes ont un champ `notes` (chaîne) persisté via `updateCardNotes`, éditable inline (textarea toggleable)
 - Les cartes ont un champ `doneAt` (ISO string ou null) stocké automatiquement quand glissées dans une liste "terminée"
+- `mutate(fn)` fait un snapshot undo puis exécute `fn()` ; tout appel DB mutateur doit passer par ce helper
+- `refreshHeaderInfo()` et `refreshCountBadge(id)` sont async, lisent les données via DB (pas le DOM)
+- `Clipboard` est un objet (plus un `let _clipboard`), méthodes : `copyCard/cutCard/copyList/cutList/paste/clear/isEmpty/type`
+- Le thème est capturé au démarrage de App via `const Theme = window.__themeAPI`, plus aucun accès à `window.__themeAPI` dans le code métier
+- `removeListDom(listId)` est une fonction partagée pour retirer une liste du DOM par ID
 
 ## Convention de code
 - `make(tag, className)` pour créer des éléments

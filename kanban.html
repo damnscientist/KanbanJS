@@ -295,6 +295,7 @@
 
     .list-title {
       flex: 1;
+      min-width: 0;
       font-weight: 600;
       font-size: 13px;
       color: var(--text);
@@ -1369,6 +1370,33 @@ const DB = (() => {
       siblings.forEach((c, i) => { c.position = i; });
       _save();
     },
+
+    // ── Aggregate ───────────────────────────────────────────
+    async getAllCards() { return _clone(_state.cards); },
+
+    // ── Export / Import / Reset ──────────────────────────────
+    async exportJSON()   { return JSON.stringify(_state); },
+    async importJSON(json) {
+      let parsed;
+      try { parsed = JSON.parse(json); } catch (_) { throw new Error('JSON invalide.'); }
+      if (!parsed.board || !Array.isArray(parsed.lists) || !Array.isArray(parsed.cards)) {
+        throw new Error('Structure invalide (attendu : board, lists, cards).');
+      }
+      _state = parsed;
+      _save();
+    },
+    async reset() {
+      _state = JSON.parse(JSON.stringify(_default));
+      _save();
+    },
+    async restoreJSON(json) {
+      let parsed;
+      try { parsed = JSON.parse(json); } catch (_) { return; }
+      if (parsed.board && Array.isArray(parsed.lists) && Array.isArray(parsed.cards)) {
+        _state = parsed;
+        _save();
+      }
+    },
   };
 })();
 
@@ -1533,6 +1561,7 @@ const App = (() => {
   const boardEl        = document.getElementById('board');
   const boardNameInput = document.getElementById('boardName');
   const headerInfoEl   = document.getElementById('headerInfo');
+  const Theme           = window.__themeAPI;
 
   // ── Helpers ──────────────────────────────────────────────
   function make(tag, className) {
@@ -1546,13 +1575,14 @@ const App = (() => {
     ta.style.height = ta.scrollHeight + 'px';
   }
 
-  function refreshHeaderInfo() {
-    const ls    = boardEl.querySelectorAll('.list').length;
-    const cards = boardEl.querySelectorAll('.card');
-    const total = cards.length;
-    const done  = boardEl.querySelectorAll('.card.card-done').length;
+  async function refreshHeaderInfo() {
+    const lists = await DB.getLists();
+    const allCards = await DB.getAllCards();
+    const doneListIds = new Set(lists.filter(l => l.done).map(l => l.id));
+    const total = allCards.length;
+    const done  = allCards.filter(c => doneListIds.has(c.listId)).length;
     headerInfoEl.textContent =
-      `${ls} liste${ls !== 1 ? 's' : ''} \u00b7 ${done}/${total} carte${total !== 1 ? 's' : ''}`;
+      `${lists.length} liste${lists.length !== 1 ? 's' : ''} \u00b7 ${done}/${total} carte${total !== 1 ? 's' : ''}`;
     const pct = total ? Math.round(done / total * 100) : 0;
     const fill = document.getElementById('progressFill');
     fill.style.width   = pct + '%';
@@ -1560,13 +1590,13 @@ const App = (() => {
     document.getElementById('progressPct').textContent = pct + '%';
   }
 
-  function refreshCountBadge(listId) {
+  async function refreshCountBadge(listId) {
     const listEl = boardEl.querySelector(`.list[data-id="${listId}"]`);
     if (!listEl) return;
     const badge   = listEl.querySelector('.list-count');
-    const cardsEl = listEl.querySelector('.cards');
-    if (!badge || !cardsEl) return;
-    const total = cardsEl.querySelectorAll('.card').length;
+    if (!badge) return;
+    const cards = await DB.getCards(listId);
+    const total = cards.length;
     badge.textContent = total || '0';
     const title    = listEl.querySelector('.list-title');
     const titleVal = title ? title.value.toLowerCase() : '';
@@ -1594,30 +1624,55 @@ const App = (() => {
     if (ms) el._timer = setTimeout(() => { el.textContent = ''; el.className = 'cfg-status'; }, ms);
   }
 
+  function removeListDom(listId) {
+    const el = boardEl.querySelector('.list[data-id="' + listId + '"]');
+    if (el) el.remove();
+  }
+
   // ── Undo / Redo ──────────────────────────────────────────
   const MAX_UNDO = 30;
-  let _undoStack = [];
-  let _redoStack = [];
+  const UK = 'kanbanjs:undo';
+  const RK = 'kanbanjs:redo';
 
-  function _snapshot() {
-    _undoStack.push(localStorage.getItem(DB.KEY));
-    if (_undoStack.length > MAX_UNDO) _undoStack.shift();
-    _redoStack = [];
+  function _loadStack(key) {
+    try { return JSON.parse(sessionStorage.getItem(key)) || []; } catch (_) { return []; }
+  }
+  function _saveStack(key, arr) { sessionStorage.setItem(key, JSON.stringify(arr)); }
+
+  async function _snapshot() {
+    const undo = _loadStack(UK);
+    undo.push(await DB.exportJSON());
+    if (undo.length > MAX_UNDO) undo.shift();
+    _saveStack(UK, undo);
+    _saveStack(RK, []);
   }
 
-  function _undo() {
-    if (!_undoStack.length) return;
-    _redoStack.push(localStorage.getItem(DB.KEY));
-    localStorage.setItem(DB.KEY, _undoStack.pop());
+  async function mutate(fn) { await _snapshot(); return await fn(); }
+
+  async function _undo() {
+    const undo = _loadStack(UK);
+    if (!undo.length) return;
+    const redo = _loadStack(RK);
+    redo.push(await DB.exportJSON());
+    _saveStack(RK, redo);
+    await DB.restoreJSON(undo.pop());
+    _saveStack(UK, undo);
     location.reload();
   }
 
-  function _redo() {
-    if (!_redoStack.length) return;
-    _undoStack.push(localStorage.getItem(DB.KEY));
-    localStorage.setItem(DB.KEY, _redoStack.pop());
+  async function _redo() {
+    const redo = _loadStack(RK);
+    if (!redo.length) return;
+    const undo = _loadStack(UK);
+    undo.push(await DB.exportJSON());
+    _saveStack(UK, undo);
+    await DB.restoreJSON(redo.pop());
+    _saveStack(RK, redo);
     location.reload();
   }
+
+  function _undoSize() { return _loadStack(UK).length; }
+  function _redoSize() { return _loadStack(RK).length; }
 
   // ── CARD ─────────────────────────────────────────────────
   function buildCard(card, done) {
@@ -1678,7 +1733,7 @@ const App = (() => {
     async function saveEdit() {
       const text = editor.value.trim();
       if (!text) { exitEdit(); return; }
-      _snapshot(); await DB.updateCard(card.id, text);
+      await mutate(() => DB.updateCard(card.id, text));
       card.text          = text;
       textEl.textContent = text;
       exitEdit();
@@ -1694,7 +1749,7 @@ const App = (() => {
 
     async function saveNotes() {
       const notes = notesEl.value;
-      _snapshot(); await DB.updateCardNotes(card.id, notes);
+      await mutate(() => DB.updateCardNotes(card.id, notes));
       card.notes = notes;
     }
 
@@ -1714,12 +1769,12 @@ const App = (() => {
 
     delBtn.addEventListener('click', async e => {
       e.stopPropagation();
-      _snapshot(); await DB.deleteCard(card.id);
+      await mutate(() => DB.deleteCard(card.id));
       if (_selCard === wrap) _selCard = null;
       const currentListId = wrap.dataset.listId;
       wrap.remove();
-      refreshCountBadge(currentListId);
-      refreshHeaderInfo();
+      await refreshCountBadge(currentListId);
+      await refreshHeaderInfo();
     });
 
     // Drag & drop souris
@@ -1749,7 +1804,7 @@ const App = (() => {
     }, async (cardId, toListId, newPos) => {
       const sourceListId = wrap.dataset.listId;
       wrap.dataset.listId = toListId;
-      _snapshot(); await DB.moveCard(cardId, toListId, newPos);
+      await mutate(() => DB.moveCard(cardId, toListId, newPos));
       const destListEl = boardEl.querySelector('.list[data-id="' + toListId + '"]');
       const isDestDone = destListEl && destListEl.dataset.done === 'true';
       const wasDone = wrap.classList.contains('card-done');
@@ -1767,16 +1822,16 @@ const App = (() => {
         const atEl = wrap.querySelector('.card-done-at');
         if (atEl) atEl.textContent = '';
       }
-      if (sourceListId !== toListId) refreshCountBadge(sourceListId);
-      refreshCountBadge(toListId);
-      refreshHeaderInfo();
+      if (sourceListId !== toListId) await refreshCountBadge(sourceListId);
+      await refreshCountBadge(toListId);
+      await refreshHeaderInfo();
     });
 
     return wrap;
   }
 
   // ── LIST ─────────────────────────────────────────────────
-  async function buildList(list) {
+  function buildList(list, cards) {
     const wrap = make('div', 'list');
     wrap.dataset.id = list.id;
     wrap.dataset.done = list.done ? 'true' : 'false';
@@ -1829,18 +1884,17 @@ const App = (() => {
 
     wrap.append(headerEl, cardsEl, footerEl);
 
-    // Load existing cards
-    const existingCards = await DB.getCards(list.id);
-    existingCards.forEach(c => cardsEl.appendChild(buildCard(c, list.done)));
-    countBadge.textContent = existingCards.length;
+    // Populate cards from parameter
+    cards.forEach(c => cardsEl.appendChild(buildCard(c, list.done)));
+    countBadge.textContent = cards.length;
 
     // Rename list
     titleInput.addEventListener('blur', async () => {
       const val = titleInput.value.trim();
       if (val && val !== list.title) {
-        _snapshot(); await DB.renameList(list.id, val);
+        await mutate(() => DB.renameList(list.id, val));
         list.title = val;
-        refreshCountBadge(list.id);
+        await refreshCountBadge(list.id);
       } else {
         titleInput.value = list.title;
       }
@@ -1853,9 +1907,9 @@ const App = (() => {
     // Delete list
     delListBtn.addEventListener('click', async () => {
       if (!confirm(`Supprimer la liste "${list.title}" et toutes ses cartes ?`)) return;
-      _snapshot(); await DB.deleteList(list.id);
+      await mutate(() => DB.deleteList(list.id));
       wrap.remove();
-      refreshHeaderInfo();
+      await refreshHeaderInfo();
     });
 
     // Add card form open/close
@@ -1873,19 +1927,19 @@ const App = (() => {
     async function submitCard() {
       const text = newCardTA.value.trim();
       if (!text) return;
-      _snapshot();
+      await _snapshot();
       const card   = await DB.createCard(list.id, text);
       const cardEl = buildCard(card, list.done);
       cardsEl.appendChild(cardEl);
       closeCardForm();
-      refreshCountBadge(list.id);
-      refreshHeaderInfo();
+      await refreshCountBadge(list.id);
+      await refreshHeaderInfo();
       cardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
     // Done toggle
     doneToggle.addEventListener('click', async () => {
-      _snapshot();
+      await _snapshot();
       const updated = await DB.toggleListDone(list.id);
       if (!updated) return;
       list.done = updated.done;
@@ -1904,12 +1958,12 @@ const App = (() => {
         }
       });
       await DB.setCardsDoneAt(list.id, now);
-      refreshCountBadge(list.id);
-      refreshHeaderInfo();
+      await refreshCountBadge(list.id);
+      await refreshHeaderInfo();
     });
 
     collapseBtn.addEventListener('click', async () => {
-      const updated = await DB.toggleCollapsed(list.id);
+      const updated = await mutate(() => DB.toggleCollapsed(list.id));
       if (!updated) return;
       list.collapsed = updated.collapsed;
       wrap.classList.toggle('collapsed', updated.collapsed);
@@ -1952,7 +2006,7 @@ const App = (() => {
         return children.slice(0, idx).filter(c => c.matches('.list')).length;
       },
     }, async (listId, _, newPos) => {
-      _snapshot(); await DB.reorderList(listId, newPos);
+      await mutate(() => DB.reorderList(listId, newPos));
     });
 
     return wrap;
@@ -1996,12 +2050,12 @@ const App = (() => {
     async function submitList() {
       const title = input.value.trim();
       if (!title) return;
-      _snapshot();
+      await _snapshot();
       const list   = await DB.createList(title);
-      const listEl = await buildList(list);
+      const listEl = buildList(list, []);
       boardEl.insertBefore(listEl, widget);
       closeForm();
-      refreshHeaderInfo();
+      await refreshHeaderInfo();
       listEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
@@ -2050,9 +2104,9 @@ const App = (() => {
       keyEl.value      = cfg && cfg.apiKey   ? cfg.apiKey   : '';
       modelEl.value    = cfg && cfg.model    ? cfg.model    : '';
       // Thèmes tab
-      if (window.__themeAPI) {
-        darkSel.value  = window.__themeAPI.dark;
-        lightSel.value = window.__themeAPI.light;
+      if (Theme) {
+        darkSel.value  = Theme.dark;
+        lightSel.value = Theme.light;
       }
       overlay.classList.add('open');
       endpointEl.focus();
@@ -2089,27 +2143,26 @@ const App = (() => {
     });
 
     document.getElementById('cfgSaveTheme').addEventListener('click', () => {
-      if (!window.__themeAPI) return;
+      if (!Theme) return;
       const d = darkSel.value;
       const l = lightSel.value;
-      window.__themeAPI.dark  = d;
-      window.__themeAPI.light = l;
+      Theme.dark  = d;
+      Theme.light = l;
       flashMessage(themeStatusEl, 'Thèmes sauvegardés.', 'success', 3000);
     });
   })();
 
   // ── RESET ──────────────────────────────────────────────────
-  document.getElementById('resetBtn').addEventListener('click', () => {
+  document.getElementById('resetBtn').addEventListener('click', async () => {
     if (confirm('Remettre le board à zéro ? Toutes les données seront perdues.')) {
-      localStorage.removeItem(DB.KEY);
+      await DB.reset();
       location.reload();
     }
   });
 
   // ── EXPORT / IMPORT JSON ──────────────────────────────────
-  document.getElementById('exportBtn').addEventListener('click', () => {
-    const raw = localStorage.getItem(DB.KEY);
-    if (!raw) return;
+  document.getElementById('exportBtn').addEventListener('click', async () => {
+    const raw = await DB.exportJSON();
     const blob = new Blob([raw], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -2129,7 +2182,7 @@ const App = (() => {
       const file = importFile.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
         try {
           const data = JSON.parse(reader.result);
           if (!data.board || !Array.isArray(data.lists) || !Array.isArray(data.cards)) {
@@ -2138,9 +2191,13 @@ const App = (() => {
           }
           if (!confirm('Remplacer le board actuel par le fichier importé ? Les données actuelles seront perdues.')) return;
           try {
-            localStorage.setItem(DB.KEY, reader.result);
+            await DB.importJSON(reader.result);
           } catch (e) {
-            alert('Espace de stockage saturé. Supprimez des données avant d\u2019importer.');
+            if (e.name === 'QuotaExceededError' || e.message.includes('stockage')) {
+              alert('Espace de stockage saturé. Supprimez des données avant d\u2019importer.');
+            } else {
+              alert(e.message);
+            }
             return;
           }
           location.reload();
@@ -2157,7 +2214,7 @@ const App = (() => {
   boardNameInput.addEventListener('blur', async () => {
     const val = boardNameInput.value.trim();
     if (val) {
-      _snapshot(); await DB.renameBoard(val);
+      await mutate(() => DB.renameBoard(val));
       document.title = `KanbanJS \u00b7 ${val}`;
     } else {
       boardNameInput.value = (await DB.getBoard()).name;
@@ -2391,20 +2448,18 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     let oldId = existing ? existing.id : null;
 
     // 1. Écritures DB (avant toute manipulation DOM)
-    _snapshot();
+    await _snapshot();
     if (existing) await DB.deleteList(existing.id);
     const list = await DB.createList('Suggestions');
     await DB.reorderList(list.id, 0);
     await Promise.all(tasks.map(t => DB.createCard(list.id, t)));
+    const cards = await DB.getCards(list.id);
 
     // 2. Mise à jour DOM
-    if (oldId) {
-      const oldEl = boardEl.querySelector('.list[data-id="' + oldId + '"]');
-      if (oldEl) oldEl.remove();
-    }
-    const listEl = await buildList(list);
+    if (oldId) removeListDom(oldId);
+    const listEl = buildList(list, cards);
     boardEl.insertBefore(listEl, boardEl.firstChild);
-    refreshHeaderInfo();
+    await refreshHeaderInfo();
   }
 
   // ── Decompose modal / FAB ──────────────────────────────────
@@ -2497,7 +2552,17 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
   // ── CLAVIER ────────────────────────────────────────────────
   let _selCard    = null;
   let _selList    = null;
-  let _clipboard  = null;
+  const Clipboard = {
+    _data: null,
+    copyCard(data) { this._data = { type: 'card', text: data.text, notes: data.notes }; },
+    cutCard(data)  { this._data = { type: 'card', text: data.text, notes: data.notes }; },
+    copyList(data) { this._data = { type: 'list', title: data.title, cards: data.cards }; },
+    cutList(data)  { this._data = { type: 'list', title: data.title, cards: data.cards }; },
+    paste()        { return this._data; },
+    clear()        { this._data = null; },
+    isEmpty()      { return !this._data; },
+    type()         { return this._data ? this._data.type : null; },
+  };
 
   function selectCard(el) {
     if (_selCard) _selCard.classList.remove('card-selected');
@@ -2578,52 +2643,54 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     if (!_selCard || !_selCard.isConnected) return;
     const textEl  = _selCard.querySelector('.card-text');
     const notesEl = _selCard.querySelector('.card-notes');
-    _clipboard = { type: 'card', text: textEl.textContent, notes: notesEl ? notesEl.value : '' };
+    Clipboard.cutCard({ text: textEl.textContent, notes: notesEl ? notesEl.value : '' });
     const listEl  = _selCard.closest('.list');
     const nextDom = _selCard.nextElementSibling || _selCard.previousElementSibling;
-    _snapshot(); await DB.deleteCard(_selCard.dataset.id);
+    await mutate(() => DB.deleteCard(_selCard.dataset.id));
     _selCard.remove();
     if (nextDom && nextDom.matches('.card')) selectCard(nextDom);
     else if (listEl) { selectList(listEl); _firstCard(listEl); }
-    if (listEl) refreshCountBadge(listEl.dataset.id);
-    refreshHeaderInfo();
+    if (listEl) await refreshCountBadge(listEl.dataset.id);
+    await refreshHeaderInfo();
   }
 
   function copyCard() {
     if (!_selCard || !_selCard.isConnected) return;
     const textEl  = _selCard.querySelector('.card-text');
     const notesEl = _selCard.querySelector('.card-notes');
-    _clipboard = { type: 'card', text: textEl.textContent, notes: notesEl ? notesEl.value : '' };
+    Clipboard.copyCard({ text: textEl.textContent, notes: notesEl ? notesEl.value : '' });
   }
 
   async function _paste() {
-    if (!_clipboard) return;
-    if (_clipboard.type === 'card') {
+    if (Clipboard.isEmpty()) return;
+    const data = Clipboard.paste();
+    if (data.type === 'card') {
       if (!_selList || !_selList.isConnected) return;
-      _snapshot();
+      await _snapshot();
       const listId = _selList.dataset.id;
       const done   = _selList.dataset.done === 'true';
-      const card   = await DB.createCard(listId, _clipboard.text);
-      if (_clipboard.notes) await DB.updateCardNotes(card.id, _clipboard.notes);
+      const card   = await DB.createCard(listId, data.text);
+      if (data.notes) await DB.updateCardNotes(card.id, data.notes);
       const cardsEl = _selList.querySelector('.cards');
       const cardEl  = buildCard(card, done);
       cardsEl.appendChild(cardEl);
       selectCard(cardEl);
-      refreshCountBadge(listId);
-      refreshHeaderInfo();
-    } else if (_clipboard.type === 'list') {
-      _snapshot();
-      const list  = await DB.createList(_clipboard.title);
+      await refreshCountBadge(listId);
+      await refreshHeaderInfo();
+    } else if (data.type === 'list') {
+      await _snapshot();
+      const list  = await DB.createList(data.title);
       if (_selList && _selList.isConnected) {
         const lists = [...boardEl.querySelectorAll('.list')];
         const idx   = lists.indexOf(_selList);
         await DB.reorderList(list.id, idx + 1);
       }
-      for (const c of _clipboard.cards) {
+      for (const c of data.cards) {
         const card = await DB.createCard(list.id, c.text);
         if (c.notes) await DB.updateCardNotes(card.id, c.notes);
       }
-      const listEl = await buildList(list);
+      const cards = await DB.getCards(list.id);
+      const listEl = buildList(list, cards);
       if (_selList && _selList.isConnected) {
         _selList.after(listEl);
       } else {
@@ -2633,8 +2700,8 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       }
       selectList(listEl);
       _firstCard(listEl);
-      refreshCountBadge(list.id);
-      refreshHeaderInfo();
+      await refreshCountBadge(list.id);
+      await refreshHeaderInfo();
     }
   }
 
@@ -2645,11 +2712,11 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       text:  c.querySelector('.card-text').textContent,
       notes: c.querySelector('.card-notes')?.value || '',
     }));
-    _clipboard = { type: 'list', title, cards };
+    Clipboard.cutList({ title, cards });
     const id    = _selList.dataset.id;
     const lists = [...boardEl.querySelectorAll('.list')];
     const idx   = lists.indexOf(_selList);
-    _snapshot(); await DB.deleteList(id);
+    await mutate(() => DB.deleteList(id));
     _selList.remove();
     if (lists.length > 1) {
       const next = lists[idx + 1] || lists[idx - 1];
@@ -2657,7 +2724,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     } else {
       clearSelection();
     }
-    refreshHeaderInfo();
+    await refreshHeaderInfo();
   }
 
   function copyList() {
@@ -2667,7 +2734,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       text:  c.querySelector('.card-text').textContent,
       notes: c.querySelector('.card-notes')?.value || '',
     }));
-    _clipboard = { type: 'list', title, cards };
+    Clipboard.copyList({ title, cards });
   }
 
   function toggleDoneList() {
@@ -2719,20 +2786,20 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     e:      { fn: _openNotes,   when: () => _selCard && _selCard.isConnected && !_inInput() },
     x:      { fn: cutCard,      when: () => _selCard && _selCard.isConnected && !_inInput() },
     y:      { fn: copyCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
-    u:      { fn: _undo,        when: () => _undoStack.length && !_inInput() },
-    p:      { fn: _paste,       when: () => _selList && _selList.isConnected && _clipboard && _clipboard.type === 'card' && !_inInput() },
+    u:      { fn: _undo,        when: () => _undoSize() && !_inInput() },
+    p:      { fn: _paste,       when: () => _selList && _selList.isConnected && !Clipboard.isEmpty() && Clipboard.type() === 'card' && !_inInput() },
     N:      { fn: _newList,       when: () => !_inInput() },
     E:      { fn: renameList,     when: () => _selList && _selList.isConnected && !_inInput() },
     X:      { fn: cutList,        when: () => _selList && _selList.isConnected && !_inInput() },
     Y:      { fn: copyList,       when: () => _selList && _selList.isConnected && !_inInput() },
-    P:      { fn: _paste,         when: () => _clipboard && !_inInput() },
+    P:      { fn: _paste,         when: () => !Clipboard.isEmpty() && !_inInput() },
     D:      { fn: toggleDoneList, when: () => _selList && _selList.isConnected && !_inInput() },
     Escape: { fn: clearSelection, when: () => (_selCard || _selList) && !_inInput() && !document.querySelector('.cheatsheet-overlay.open') },
   });
 
   document.addEventListener('keydown', e => {
-    if ((e.key === 'r' || e.key === 'R') && (e.ctrlKey || e.metaKey) && !_inInput()) {
-      if (_redoStack.length) { e.preventDefault(); _redo(); }
+    if ((e.key === 'y' || e.key === 'Y') && (e.ctrlKey || e.metaKey) && !_inInput()) {
+      if (_redoSize()) { e.preventDefault(); _redo(); }
       return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -2823,7 +2890,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     shortcuts.appendChild(cols);
     shortcuts.appendChild(rows('Autres', [
       [['u'],         'Annuler'],
-      [['Ctrl','R'],  'R\u00E9tablir'],
+      [['Ctrl','Y'],  'R\u00E9tablir'],
       [['Ctrl','K'],  'Rechercher une carte'],
       [['1','9'],     'Focus liste 1 \u00E0 9'],
       [['?'],         'Aide'],
@@ -2968,13 +3035,15 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       document.title = `KanbanJS \u00b7 ${boardData.name}`;
 
       const lists = await DB.getLists();
-      for (const l of lists) {
-        boardEl.appendChild(await buildList(l));
-        refreshCountBadge(l.id);
-      }
+      const allCards = await DB.getAllCards();
+      lists.forEach(l => {
+        const listEl = buildList(l, allCards.filter(c => c.listId === l.id));
+        boardEl.appendChild(listEl);
+        await refreshCountBadge(l.id);
+      });
 
       buildAddListWidget();
-      refreshHeaderInfo();
+      await refreshHeaderInfo();
 
       document.getElementById('helpBtn').addEventListener('click', () => {
         document.querySelector('.cheatsheet-overlay').classList.toggle('open');
@@ -2993,8 +3062,8 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
         Erreur au chargement.
         <button class="btn btn-ghost" id="recoverBtn">Réinitialiser</button>
       </div>`;
-      document.getElementById('recoverBtn').addEventListener('click', () => {
-        localStorage.removeItem(DB.KEY);
+      document.getElementById('recoverBtn').addEventListener('click', async () => {
+        await DB.reset();
         location.reload();
       });
     }
