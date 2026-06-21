@@ -1796,7 +1796,7 @@ const App = (() => {
     if (list.done) doneToggle.classList.add('active');
     const collapseBtn = make('button', 'btn-icon');
     collapseBtn.title = 'Replier la liste';
-    collapseBtn.textContent = '\u25BE';
+    collapseBtn.textContent = list.collapsed ? '\u25B8' : '\u25BE';
     if (list.collapsed) collapseBtn.classList.add('active');
     const delListBtn = make('button', 'btn-icon danger');
     delListBtn.title       = 'Supprimer la liste';
@@ -1912,6 +1912,7 @@ const App = (() => {
       if (!updated) return;
       list.collapsed = updated.collapsed;
       wrap.classList.toggle('collapsed', updated.collapsed);
+      collapseBtn.textContent = updated.collapsed ? '\u25B8' : '\u25BE';
       collapseBtn.classList.toggle('active', updated.collapsed);
     });
 
