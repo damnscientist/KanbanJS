@@ -1218,7 +1218,8 @@ const DB = (() => {
       { id: _tutoId,    title: 'Tuto',         position: 0 },
       { id: uid(), title: 'Backlog',     position: 1 },
       { id: uid(), title: 'In Progress', position: 2 },
-      { id: uid(), title: 'Done',        position: 3, done: true },
+      { id: uid(), title: 'Waiting',     position: 3 },
+      { id: uid(), title: 'Done',        position: 4, done: true },
     ],
     cards: [
       { id: uid(), listId: _tutoId, text: '1. Cliquer + pour décomposer une corvée',             position: 0, notes: '', doneAt: null },

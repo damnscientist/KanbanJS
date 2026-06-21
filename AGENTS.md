@@ -34,7 +34,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Création inline (bouton + formulaire "Ajouter une liste")
 - Renommage (clic sur le titre)
 - Suppression (confirmation)
-- Défaut au premier lancement : "Tuto", "Backlog", "In Progress", "Done"
+- Défaut au premier lancement : "Tuto", "Backlog", "In Progress", "Waiting", "Done"
 - Drag & drop souris et tactile pour réordonner horizontalement (DnD générique)
 - **Liste "terminé"** : chaque liste a un bouton `✓` qui la marque comme "terminée".
   Les cartes d'une liste "terminée" s'affichent barrées/grissées.
@@ -163,7 +163,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Le prompt système est dans `PROMPT_SYSTEM` (template literal, substitution `{{TASK}}`)
 - La config API (provider, endpoint, apiKey, model) est stockée en localStorage, lue par `readAIConfig()` dans App
 - Le fournisseur est branché dans `queryAI` via un switch (`'openai'` / `'anthropic'` / `'google'`), chaque branche construit body + headers + parsing de réponse
-- Le board est initialisé avec 4 listes par défaut via `DB._default` (dont "Tuto" avec cartes-exemples)
+- Le board est initialisé avec 5 listes par défaut via `DB._default` (dont "Tuto" avec cartes-exemples)
 - `buildList` est asynchrone (lit les cartes depuis DB)
 - `buildCard` est synchrone (reçoit une carte déjà construite)
 - Les listes ont un champ `done` (booléen) ; si vrai, leurs cartes affichent `.card-done` (barré + grisé)
