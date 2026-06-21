@@ -1787,6 +1787,7 @@ const App = (() => {
       wrap.classList.remove('editing');
     }
     async function saveEdit() {
+      if (!wrap.classList.contains('editing')) return;
       const text = editor.value.trim();
       if (!text) { exitEdit(); return; }
       await mutate(() => DB.updateCard(card.id, text));
@@ -1853,9 +1854,10 @@ const App = (() => {
         }
         return null;
       },
-      getAfter(container, y) {
-        if (!_cardCache) {
+      getAfter(container, x, y) {
+        if (!_cardCache || _cardCache._container !== container) {
           _cardCache = new Map();
+          _cardCache._container = container;
           for (const c of container.querySelectorAll('.card')) {
             if (c !== wrap) _cardCache.set(c, c.getBoundingClientRect());
           }
@@ -1975,7 +1977,7 @@ const App = (() => {
     // Delete list
     delListBtn.addEventListener('click', async () => {
       if (!confirm(`Supprimer la liste "${list.title}" et toutes ses cartes ?`)) return;
-      if (_selCard && _selCard.closest('.list') === wrap) selectCard(null);
+      if (_selList === wrap || (_selCard && _selCard.closest('.list') === wrap)) clearSelection();
       await mutate(() => DB.deleteList(list.id));
       wrap.remove();
       await refreshHeaderInfo();
@@ -2261,11 +2263,12 @@ const App = (() => {
           location.reload();
         } catch (_) {
           alert('Fichier JSON invalide.');
+        } finally {
+          importFile.value = '';
         }
       };
-      reader.onerror = () => { alert('Erreur de lecture du fichier.'); };
+      reader.onerror = () => { alert('Erreur de lecture du fichier.'); importFile.value = ''; };
       reader.readAsText(file);
-      importFile.value = '';
     });
   })();
 
@@ -3015,7 +3018,13 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
         const row = make('div', 'search-result');
         row.dataset.idx = i;
         row.innerHTML = '<span class="search-result-text">' + esc(m.text) + '</span><span class="search-result-list">' + esc(m.listTitle) + '</span>';
-        row.addEventListener('click', () => { selectList(m.list); selectCard(m.card); close(); });
+        row.addEventListener('click', () => {
+          if (m.list.classList.contains('collapsed')) {
+            const colBtn = m.list.querySelector('.btn-icon[title*="Replier"]');
+            if (colBtn) colBtn.click();
+          }
+          selectList(m.list); selectCard(m.card); close();
+        });
         results.appendChild(row);
       });
     }

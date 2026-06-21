@@ -112,6 +112,16 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - **Pas de déploiement** — fichier local, provoque des erreurs CORS si ouvert en `file://` (l'API fetch y est bloquée, à servir via un serveur local)
 - **Fournisseur IA centralisé** : tout le branchement fournisseur est dans `queryAI` (switch provider → body/headers/parsing)
 
+## Corrections récentes (audit 2026-06-21 — bugs finaux)
+
+- **Bug 1 — `getAfter` cartes recevait `x` au lieu de `y`** : le moteur DnD appelle `cfg.getAfter(container, x, y, ghostEl)` mais le callback carte déclarait `(container, y)`, donc `y` recevait la valeur de `x`. Le placement vertical des cartes pendant le drag était calculé à partir de la coordonnée horizontale. Corrigé en `(container, x, y)`.
+- **Bug 2 — Cache `_cardCache` jamais invalidé entre listes** : le cache des rects des cartes était construit pour une liste et réutilisé tel quel quand le drag survolait une autre liste. Les cartes atterrissaient toujours en fin de liste cible. Corrigé en keyant le cache par container (`_cardCache._container`).
+- **Bug 3 — Double snapshot undo sur « Sauver »** : le blur de l'éditeur déclenchait `saveEdit()` puis le click sur le bouton la redéclenchait, créant un snapshot undo fantôme. Corrigé avec un guard `if (!wrap.classList.contains('editing')) return;` en tête de `saveEdit`.
+- **Bug 4 — « Annuler » sauvegardait quand même** : cliquer « Annuler » appelait `exitEdit()` (retire `.editing`), mais le blur subséquent appelait `saveEdit()` qui persistait la modification. Le guard du Bug 3 corrige aussi ce bug.
+- **Bug 7 — `importFile.value = ''` hors callback** : le reset de l'input file était exécuté de manière synchrone après `reader.readAsText()`, avant que `onload` ne se déclenche. Déplacé dans un `finally` du `onload` et dans `onerror`.
+- **Bug 8 — `_selList` orphelin après suppression de liste** : le handler de suppression appelait `selectCard(null)` mais ne désélectionnait pas `_selList`, qui pointait vers un élément DOM retiré. Remplacé par `clearSelection()`.
+- **Bug 12 — Recherche sélectionnait carte dans liste repliée** : cliquer sur un résultat de recherche dans une liste collapsed sélectionnait la carte mais ne la rendait pas visible. Ajout d'un dépliage automatique de la liste avant la sélection.
+
 ## Corrections récentes (audit 2026-06-21 — visuel)
 
 - **Point 1 — Couleurs hardcodées** : tous les `rgba(232,168,90,…)` / `#e8a85a` dans les règles CSS (`.list.drag-over`, `.btn-icon.active`, `.drop-placeholder`, `.list-placeholder`, `.card.card-selected`, `.list.list-selected`, `.add-list-btn:hover`) remplacés par `color-mix(in srgb, var(--accent) X%, transparent)`.
