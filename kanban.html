@@ -2525,7 +2525,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     const allLists = await DB.getLists();
     const existing = allLists.find(l => l.title.startsWith('IA '));
     let oldId = existing ? existing.id : null;
-    const listTitle = 'IA ' + tokens + ' tokens';
+    const listTitle = 'IA (' + tokens + ' tokens)';
 
     const list = await mutate(() => DB.batch(async () => {
       if (existing) await DB.deleteList(existing.id);
