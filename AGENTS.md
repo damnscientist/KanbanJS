@@ -1,6 +1,6 @@
 # KanbanJS — Projet anti-procrastination
 
-Fichier unique `kanban.html` (~3078 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
+Fichier unique `kanban.html` (~3100 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
 
 ## Concept
 
@@ -111,6 +111,19 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 ### Limites techniques
 - **Pas de déploiement** — fichier local, provoque des erreurs CORS si ouvert en `file://` (l'API fetch y est bloquée, à servir via un serveur local)
 - **Fournisseur IA centralisé** : tout le branchement fournisseur est dans `queryAI` (switch provider → body/headers/parsing)
+
+## Corrections récentes (audit 2026-06-21 — visuel)
+
+- **Point 1 — Couleurs hardcodées** : tous les `rgba(232,168,90,…)` / `#e8a85a` dans les règles CSS (`.list.drag-over`, `.btn-icon.active`, `.drop-placeholder`, `.list-placeholder`, `.card.card-selected`, `.list.list-selected`, `.add-list-btn:hover`) remplacés par `color-mix(in srgb, var(--accent) X%, transparent)`.
+- **Point 2 — `.add-list-btn` thèmes clairs** : suppression du `background: rgba(255,255,255,.03)` de base et des 16 lignes de surcharges par thème (4 thèmes × 2 règles). Remplacé par un `:hover` unique avec `color-mix(in srgb, var(--accent) 10%, transparent)`.
+- **Point 3 — `.btn-icon.danger:hover`** : `rgba(217,90,74,.15)` → `color-mix(in srgb, var(--danger) 15%, transparent)`.
+- **Point 4 — Debug panel** : couleurs hardcodées (`#0a0a0f` / `#a0e0a0` / `#88aacc` / `#e06060`) remplacées par les variables de thème (`--surface-2`, `--text`, `--accent`, `--danger`) + bordure `var(--border)`.
+- **Point 5 — Ghost DnD** : `box-shadow: 0 8px 32px rgba(0,0,0,.6)` → `box-shadow: var(--shadow)` (s'adapte au thème).
+- **Point 6 — `.cfg-status.success`** : `color: #2ecc71` → `color: var(--accent)` (chaque thème a sa propre couleur de succès).
+- **Point 7 — Surcharges `.add-list-btn`** : voir Point 2.
+- **Point 8 — Responsive** : ajout de `.cheatsheet-intro { display: none }` sur mobile (cohérent avec `.cheatsheet-shortcuts`). `--list-width` réduit à 260px sur mobile.
+- **Point 9 — États visuels** : ajout de `:focus-visible` global (outline `var(--accent)`), `:active` sur `.btn-primary` et `.btn-ghost`, `:disabled` sur `.btn` / `.btn-icon` (opacity + `cursor: not-allowed`), `cursor: default` sur `.cheatsheet .row`.
+- **Point 10 — Fallback `color-mix()`** : ajout des variables `--accent-rgb` / `--danger-rgb` dans `:root` et les 8 thèmes. Fallback `rgba(var(--accent-rgb), .XX)` avant chaque `color-mix()` pour les WIP warnings (`.list.wip-warn`, `.list-count.wip-warn`).
 
 ## Corrections récentes (audit 2026-06-21 — architecture)
 
