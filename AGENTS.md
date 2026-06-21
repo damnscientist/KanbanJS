@@ -42,6 +42,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
   Le statut se met à jour automatiquement au drag & drop entre listes.
   Les cartes d'une liste "terminée" affichent aussi la date de complétion.
 - **WIP warning** : bordure et badge accent quand une liste "WIP" ou "In Progress" contient ≥ 3 cartes
+- **Repli** : bouton ▾/▸ pour replier/déplier une liste (cartes + footer masqués), état persisté
 
 ### Cartes
 - Création inline ("Ajouter une carte" dans chaque liste)
@@ -102,8 +103,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 
 ### Nice to have (si projet < 3000 lignes)
 4. **Notes markdown** — rendu basique (gras, italique, listes, code inline) dans la textarea de notes, toggle édition/aperçu (70-110 LOC).
-5. **Archive / repli** — collapse des listes terminées, état persisté (40-60 LOC).
-6. **Tags** — champ `tags: []` sur les cartes, chips colorés, filtrable via la recherche (70-85 LOC).
+5. **Tags** — champ `tags: []` sur les cartes, chips colorés, filtrable via la recherche (70-85 LOC).
 
 ### Non retenu
 - **Multi-boards** : sur-ingénierie pour un outil mono-utilisateur. Les listes séparent déjà les contextes.
@@ -126,6 +126,8 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Header mobile : `overflow-x: auto` (les boutons restent accessibles, la barre de progression est visible)
 - Bugfixes : bleed-through clavier sur overlay recherche, Escape cheatsheet vidait la sélection, éditeur carte bloqué si texte vide, import quota, _selCard orphelin après suppression UI, contextmenu DnD non retiré
 - Undo/Redo : `u` undo, `Ctrl+R` redo, 30 snapshots (session uniquement)
+- Repli des listes : bouton ▾/▸ pour masquer cartes + footer, état persisté
+- Liste "Waiting" ajoutée par défaut (kanban canonique : Backlog → In Progress → Waiting → Done)
 
 ## Corrections récentes (audit 2026-06-19)
 - `DB.setCardsDoneAt(listId, doneAt)` : méthode batch pour éviter N écritures localStorage quand on toggle une liste terminée

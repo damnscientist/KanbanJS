@@ -492,6 +492,9 @@
       box-shadow: 0 0 0 2px rgba(232,168,90,.25), var(--shadow-sm);
     }
 
+    .list.collapsed .cards,
+    .list.collapsed .list-footer { display: none; }
+
     .list.wip-warn {
       border-color: var(--accent);
       box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent), var(--shadow-sm);
@@ -1215,11 +1218,11 @@ const DB = (() => {
   const _default = {
     board: { id: 'board-1', name: 'Mon Board' },
     lists: [
-      { id: _tutoId,    title: 'Tuto',         position: 0 },
-      { id: uid(), title: 'Backlog',     position: 1 },
-      { id: uid(), title: 'In Progress', position: 2 },
-      { id: uid(), title: 'Waiting',     position: 3 },
-      { id: uid(), title: 'Done',        position: 4, done: true },
+      { id: _tutoId,    title: 'Tuto',         position: 0, collapsed: false },
+      { id: uid(), title: 'Backlog',     position: 1, collapsed: false },
+      { id: uid(), title: 'In Progress', position: 2, collapsed: false },
+      { id: uid(), title: 'Waiting',     position: 3, collapsed: false },
+      { id: uid(), title: 'Done',        position: 4, done: true, collapsed: false },
     ],
     cards: [
       { id: uid(), listId: _tutoId, text: '1. Cliquer + pour décomposer une corvée',             position: 0, notes: '', doneAt: null },
@@ -1280,7 +1283,7 @@ const DB = (() => {
     async createList(title) {
       const pos = _state.lists.length
         ? Math.max(..._state.lists.map(l => l.position)) + 1 : 0;
-      const list = { id: uid(), title, position: pos, done: false };
+      const list = { id: uid(), title, position: pos, done: false, collapsed: false };
       _state.lists.push(list);
       _save();
       return _clone(list);
@@ -1308,6 +1311,11 @@ const DB = (() => {
     async toggleListDone(id) {
       const l = _state.lists.find(l => l.id === id);
       if (l) { l.done = !l.done; _save(); }
+      return l ? _clone(l) : null;
+    },
+    async toggleCollapsed(id) {
+      const l = _state.lists.find(l => l.id === id);
+      if (l) { l.collapsed = !l.collapsed; _save(); }
       return l ? _clone(l) : null;
     },
 
@@ -1771,6 +1779,7 @@ const App = (() => {
     const wrap = make('div', 'list');
     wrap.dataset.id = list.id;
     wrap.dataset.done = list.done ? 'true' : 'false';
+    if (list.collapsed) wrap.classList.add('collapsed');
 
     // Header
     const headerEl = make('div', 'list-header');
@@ -1785,10 +1794,14 @@ const App = (() => {
     doneToggle.textContent = '\u2713';
     doneToggle.dataset.done = list.done ? 'true' : 'false';
     if (list.done) doneToggle.classList.add('active');
+    const collapseBtn = make('button', 'btn-icon');
+    collapseBtn.title = 'Replier la liste';
+    collapseBtn.textContent = '\u25BE';
+    if (list.collapsed) collapseBtn.classList.add('active');
     const delListBtn = make('button', 'btn-icon danger');
     delListBtn.title       = 'Supprimer la liste';
     delListBtn.textContent = '\u{1F5D1}';
-    headerEl.append(titleInput, countBadge, doneToggle, delListBtn);
+    headerEl.append(titleInput, countBadge, doneToggle, collapseBtn, delListBtn);
 
     // Cards container
     const cardsEl = make('div', 'cards');
@@ -1892,6 +1905,14 @@ const App = (() => {
       await DB.setCardsDoneAt(list.id, now);
       refreshCountBadge(list.id);
       refreshHeaderInfo();
+    });
+
+    collapseBtn.addEventListener('click', async () => {
+      const updated = await DB.toggleCollapsed(list.id);
+      if (!updated) return;
+      list.collapsed = updated.collapsed;
+      wrap.classList.toggle('collapsed', updated.collapsed);
+      collapseBtn.classList.toggle('active', updated.collapsed);
     });
 
     addCardBtn.addEventListener('click',  openCardForm);
