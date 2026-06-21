@@ -6,6 +6,10 @@ Fichier unique `kanban.html` (~3100 lignes). Aucune dépendance, pas de bundler.
 
 Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'utilisateur décrit une corvée → un agent d'IA la décompose en actions minuscules (30s-3min), créées dans une liste "Suggestions" dédiée. L'utilisateur les glisse ensuite dans "In Progress" → "Done".
 
+## Positionnement
+
+Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les freelances submergés. L'angle "fichier unique, pas de compte, données locales" est un argument fort face aux Trello/Todoist. Le projet est fonctionnellement complet pour un usage personnel. Pour le rendre accessible à d'autres, le travail restant est surtout la distribution (P0 de la roadmap) et l'UX d'onboarding (P1), pas du code.
+
 ## Fonctionnalités existantes
 
 ### Board
@@ -23,7 +27,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Navigation : `h`/`l` cartes ↑/↓, `j`/`k` listes ←/→, `1-9` focus liste n
 - Actions carte : `n` créer, `r` renommer, `e` ouvrir notes, `x` couper, `y` copier, `p` coller
 - Actions liste : `N` créer, `E` renommer, `D` toggle terminé, `X` couper, `Y` copier, `P` coller
-- `Esc` désélectionne la carte/liste courante, `?` affiche l'aide clavier
+- `Esc` désélectionne la carte/liste courante ou ferme l'overlay actif, `?` affiche l'aide clavier
 - Presse-papier unifié : couper/copier une liste copie titre + cartes
 - Sélection visuelle : bordure accent, actions toujours visibles sur carte sélectionnée
 - Ignore automatiquement quand un input/textarea a le focus ou une modale est ouverte
@@ -58,7 +62,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - **Abstraction fournisseur** : supporte OpenAI/compatible, Anthropic, Google Gemini (switch dans `queryAI`)
 - Appel POST à l'API avec format spécifique par fournisseur
 - Prompt système : décomposition en micro-actions anti-procrastination
-- Parsing robuste de la réponse JSON (équilibrage des crochets)
+- Parsing robuste de la réponse JSON (équilibrage des crochets, détection des guillemets)
 - Résultat : liste "Suggestions" créée en position 0 avec les cartes générées
 - Panneau de debug toggleable (logs requête/réponse/parsing)
 
@@ -85,154 +89,37 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 ### Mécanique DnD
 - `pointerdown`/`pointermove`/`pointerup` — API unifiée souris + tactile
 - Seuil 4px avant démarrage (évite les faux positifs)
-- Ghost : clone de l'élément, fixed, `pointer-events:none`
+- Ghost : clone de l'élément ou `ghostBuilder` optionnel, fixed, `pointer-events:none`
 - `getZone(x,y)` : itère sur `getBoundingClientRect()` des cibles (pas de `elementFromPoint`)
 - Guard `lastPos` : mutation DOM uniquement si la position a changé
+- Cache des `getBoundingClientRect()` construit au démarrage du drag, évite les reflows à chaque `pointermove`
 - `cleanup()` après `dropCb()` (capture locale de la callback)
+- Handler `pointercancel` + `cleanup()` défensif (libération capture persistante)
 
-## Design
+### Design
 - Dark/light mode via `data-theme` sur `<html>` + CSS custom properties
 - Modals : overlay `z-index: 20000`
 - FAB : `z-index: 5000`, `position: fixed` bottom-right
-- Couleurs : palette dark (bg `#1a1410`) et light (bg `#f7f3ee`)
-
-## Limitations / À faire
-
-### À implémenter (priorité décroissante)
-1. *(aucune — tout est fait)*
-
-### Nice to have (si projet < 3000 lignes)
-4. **Notes markdown** — rendu basique (gras, italique, listes, code inline) dans la textarea de notes, toggle édition/aperçu (70-110 LOC).
-5. **Tags** — champ `tags: []` sur les cartes, chips colorés, filtrable via la recherche (70-85 LOC).
-
-### Non retenu
-- **Multi-boards** : sur-ingénierie pour un outil mono-utilisateur. Les listes séparent déjà les contextes.
+- 4 thèmes sombres (Warm Night, Deep Ocean, Forest, Tokyo Night) et 4 clairs (Soft Sand, Mint, Lavender, Tokyo Light)
+- Couleurs CSS : `color-mix(in srgb, var(--accent) X%, transparent)` + fallback `rgba(var(--accent-rgb), .X)` pour compatibilité
 
 ### Limites techniques
 - **Pas de déploiement** — fichier local, provoque des erreurs CORS si ouvert en `file://` (l'API fetch y est bloquée, à servir via un serveur local)
 - **Fournisseur IA centralisé** : tout le branchement fournisseur est dans `queryAI` (switch provider → body/headers/parsing)
 
-## Corrections récentes (audit 2026-06-21 — bugs finaux)
-
-- **Bug 1 — `getAfter` cartes recevait `x` au lieu de `y`** : le moteur DnD appelle `cfg.getAfter(container, x, y, ghostEl)` mais le callback carte déclarait `(container, y)`, donc `y` recevait la valeur de `x`. Le placement vertical des cartes pendant le drag était calculé à partir de la coordonnée horizontale. Corrigé en `(container, x, y)`.
-- **Bug 2 — Cache `_cardCache` jamais invalidé entre listes** : le cache des rects des cartes était construit pour une liste et réutilisé tel quel quand le drag survolait une autre liste. Les cartes atterrissaient toujours en fin de liste cible. Corrigé en keyant le cache par container (`_cardCache._container`).
-- **Bug 3 — Double snapshot undo sur « Sauver »** : le blur de l'éditeur déclenchait `saveEdit()` puis le click sur le bouton la redéclenchait, créant un snapshot undo fantôme. Corrigé avec un guard `if (!wrap.classList.contains('editing')) return;` en tête de `saveEdit`.
-- **Bug 4 — « Annuler » sauvegardait quand même** : cliquer « Annuler » appelait `exitEdit()` (retire `.editing`), mais le blur subséquent appelait `saveEdit()` qui persistait la modification. Le guard du Bug 3 corrige aussi ce bug.
-- **Bug 7 — `importFile.value = ''` hors callback** : le reset de l'input file était exécuté de manière synchrone après `reader.readAsText()`, avant que `onload` ne se déclenche. Déplacé dans un `finally` du `onload` et dans `onerror`.
-- **Bug 8 — `_selList` orphelin après suppression de liste** : le handler de suppression appelait `selectCard(null)` mais ne désélectionnait pas `_selList`, qui pointait vers un élément DOM retiré. Remplacé par `clearSelection()`.
-- **Bug 12 — Recherche sélectionnait carte dans liste repliée** : cliquer sur un résultat de recherche dans une liste collapsed sélectionnait la carte mais ne la rendait pas visible. Ajout d'un dépliage automatique de la liste avant la sélection.
-
-## Corrections récentes (audit 2026-06-21 — visuel)
-
-- **Point 1 — Couleurs hardcodées** : tous les `rgba(232,168,90,…)` / `#e8a85a` dans les règles CSS (`.list.drag-over`, `.btn-icon.active`, `.drop-placeholder`, `.list-placeholder`, `.card.card-selected`, `.list.list-selected`, `.add-list-btn:hover`) remplacés par `color-mix(in srgb, var(--accent) X%, transparent)`.
-- **Point 2 — `.add-list-btn` thèmes clairs** : suppression du `background: rgba(255,255,255,.03)` de base et des 16 lignes de surcharges par thème (4 thèmes × 2 règles). Remplacé par un `:hover` unique avec `color-mix(in srgb, var(--accent) 10%, transparent)`.
-- **Point 3 — `.btn-icon.danger:hover`** : `rgba(217,90,74,.15)` → `color-mix(in srgb, var(--danger) 15%, transparent)`.
-- **Point 4 — Debug panel** : couleurs hardcodées (`#0a0a0f` / `#a0e0a0` / `#88aacc` / `#e06060`) remplacées par les variables de thème (`--surface-2`, `--text`, `--accent`, `--danger`) + bordure `var(--border)`.
-- **Point 5 — Ghost DnD** : `box-shadow: 0 8px 32px rgba(0,0,0,.6)` → `box-shadow: var(--shadow)` (s'adapte au thème).
-- **Point 6 — `.cfg-status.success`** : `color: #2ecc71` → `color: var(--accent)` (chaque thème a sa propre couleur de succès).
-- **Point 7 — Surcharges `.add-list-btn`** : voir Point 2.
-- **Point 8 — Responsive** : ajout de `.cheatsheet-intro { display: none }` sur mobile (cohérent avec `.cheatsheet-shortcuts`). `--list-width` réduit à 260px sur mobile.
-- **Point 9 — États visuels** : ajout de `:focus-visible` global (outline `var(--accent)`), `:active` sur `.btn-primary` et `.btn-ghost`, `:disabled` sur `.btn` / `.btn-icon` (opacity + `cursor: not-allowed`), `cursor: default` sur `.cheatsheet .row`.
-- **Point 10 — Fallback `color-mix()`** : ajout des variables `--accent-rgb` / `--danger-rgb` dans `:root` et les 8 thèmes. Fallback `rgba(var(--accent-rgb), .XX)` avant chaque `color-mix()` pour les WIP warnings (`.list.wip-warn`, `.list-count.wip-warn`).
-
-## Corrections récentes (audit 2026-06-21 — architecture)
-
-- **Point 1 — Frontières DB** : ajout des méthodes `DB.exportJSON()`, `DB.importJSON(json)`, `DB.reset()`, `DB.restoreJSON(json)`, `DB.getAllCards()`. Plus aucun accès à `localStorage` / `DB.KEY` hors du module DB. L'import passe par `DB.importJSON()` avec validation + gestion QuotaExceededError.
-- **Point 2 — DOM source de vérité** : `refreshHeaderInfo()` et `refreshCountBadge()` sont async et lisent désormais les données via `DB.getLists()`, `DB.getAllCards()`, `DB.getCards(id)` au lieu de `querySelectorAll('.card')`.
-- **Point 3 — Init parallèle** : `init()` utilise `DB.getAllCards()` + `lists.forEach(l => buildList(l, cards))` au lieu d'un `for...of await`. Une seule lecture DB au lieu de N.
-- **Point 4 — Uniformisation sync** : `buildList(list, cards)` est maintenant synchrone. Les cartes sont pré-fetchées par l'appelant (`DB.getCards()` ou `DB.getAllCards()`).
-- **Point 5 — Presse-papier encapsulé** : `Clipboard` remplace la variable globale `_clipboard`. Méthodes : `copyCard/cutCard/copyList/cutList/paste/clear/isEmpty/type`.
-- **Point 6 — mutate helper** : `mutate(fn)` fait `_snapshot()` puis exécute `fn()`. Remplace les ~15 `_snapshot(); await DB.xxx()`. Le collapse toggle bénéficie maintenant d'un undo. `_snapshot()` utilise `DB.exportJSON()` au lieu de `localStorage.getItem(DB.KEY)`.
-- **Point 7 — Theme API** : `const Theme = window.__themeAPI` capturé au début de App. La modale configuration utilise `Theme` au lieu de `window.__themeAPI`.
-- **Point 8 — Helper DOM** : `removeListDom(listId)` extrait la suppression DOM répétée. Utilisé dans `createSuggestionsList`.
-- Undo/Redo utilisent `DB.exportJSON()` / `DB.restoreJSON()` au lieu de `localStorage` direct.
-- Reset et bouton de récupération utilisent `DB.reset()` au lieu de `localStorage.removeItem(DB.KEY)`.
-
-## Corrections récentes (audit 2026-06-21 — bugs)
-
-- **Bug 1 — Guard DOM null** : ajout de guards `if (!el) return;` / optional chaining sur les `querySelector` dans `cutCard`, `copyCard`, `cutList`, `copyList` et la boucle de recherche. Évite des TypeError si le DOM est modifié concurrentiellement.
-- **Bug 2 — Undo null** : déjà corrigé (le code utilise `DB.exportJSON()` et non `localStorage.getItem(DB.KEY)` depuis l'audit architecture).
-- **Bug 3 — Double _save() toggle done** : `DB.toggleListDone(id, doneAt)` accepte maintenant un second paramètre optionnel pour setter `doneAt` sur toutes les cartes en une seule écriture. Le handler passe `now` ou `null`, supprimant l'appel redondant à `DB.setCardsDoneAt()`.
-- **Bug 4 — FileReader onerror** : ajout de `reader.onerror` avec `alert('Erreur de lecture du fichier.')` sur l'import JSON.
-- **Bug 5 — Ctrl+R dans AGENTS.md** : corrigé en `Ctrl+Y` (convention standard, `Ctrl+R` est le rechargement du navigateur).
-- **Bug 6 — Collapse undo** : déjà corrigé (le handler utilise `mutate()` depuis l'audit architecture).
-- **Bug 7 — Centralisation Escape** : le handler Escape dédié de la cheatsheet est supprimé. Le BINDINGS `Escape` gère maintenant les deux cas : fermer la cheatsheet si ouverte, sinon désélectionner.
-- **Bug 8 — _selCard orphelin** : le handler de suppression de liste (`delListBtn`) appelle `selectCard(null)` si la carte sélectionnée appartient à la liste supprimée.
-- **Bug 9 — Ordre DnD DOM/DB** : `wrap.dataset.listId = toListId` déplacé après `await mutate(() => DB.moveCard(...))` pour éviter une désynchronisation DOM/DB si la DB échoue.
-
-## Corrections récentes (audit 2026-06-20)
-- Raccourcis clavier vim-like : minuscule = carte, majuscule = liste. Navigation `h`/`l`/`j`/`k` + actions `n`/`r`/`e`/`x`/`y`/`p` + `N`/`E`/`D`/`X`/`Y`/`P` + `1-9` + `Esc` + `?` aide (~160 LOC)
-- Sélection visuelle carte/liste : bordure accent, actions visibles en permanence sur carte sélectionnée
-- Presse-papier unifié : `x`/`y`/`p` sur cartes, `X`/`Y`/`P` sur listes (titre + cartes)
-- Escape ferme la textarea de notes (cohérent avec l'éditeur de carte)
-- Cheatsheet toggleable avec `?` (overlay semi-transparent, deux colonnes carte/liste)
-- `L` → `N` (nouvelle liste), `R` → `E` (renommer liste) : cohérence majuscule = liste
-- `Ctrl+K` : recherche fuzzy sur les cartes du board (texte, notes, titre de liste)
-- Indicateur de progression : barre + pourcentage dans le header (`3/8 cartes`, `38%`)
-- WIP warning : bordure et badge en `var(--accent)` quand une liste "WIP" / "In Progress" contient ≥ 3 cartes
-- Cheatsheet enrichie : 5 principes kanban anti-procrastination en style kbd, section philosophique masquée sur mobile, raccourcis masqués sur mobile, lien `?` dans le header
-- Header mobile : `overflow-x: auto` (les boutons restent accessibles, la barre de progression est visible)
-- Bugfixes : bleed-through clavier sur overlay recherche, Escape cheatsheet vidait la sélection, éditeur carte bloqué si texte vide, import quota, _selCard orphelin après suppression UI, contextmenu DnD non retiré
-- Undo/Redo : `u` undo, `Ctrl+Y` redo, 30 snapshots (session uniquement)
-- Repli des listes : bouton ▾/▸ pour masquer cartes + footer, état persisté
-- Liste "Waiting" ajoutée par défaut (kanban canonique : Backlog → In Progress → Waiting → Done)
-
-## Corrections récentes (audit 2026-06-19)
-- `DB.setCardsDoneAt(listId, doneAt)` : méthode batch pour éviter N écritures localStorage quand on toggle une liste terminée
-- `_save()` wrappé dans try/catch avec alerte en cas de `QuotaExceededError` (stockage saturé)
-- `parseAITasks` : détection des guillemets dans le compteur de crochets (les `[`/`]` dans les chaînes JSON ne perturbent plus le parsing)
-- Prompt OpenAI : ajout d'un message `role: 'user'` en complément du `system` (compatibilité élargie avec les modèles exigeant un message user)
-- `flashMessage(el, msg, cls, ms)` : fonction partagée remplaçant les doublons `showStatus`/`show`
-- `close()` de la modale décomposition nettoie le timer de statut
-- `maxlength="200"` sur les inputs de nom (board et listes)
-
-## Corrections récentes (audit 2026-06-17)
-- Timeout 60s sur l'appel fetch API (`AbortController`)
-- `init()` wrappé dans try/catch avec bouton de réinitialisation en cas de crash
-- `createSuggestionsList` : écritures DB avant DOM (réduit les incohérences si échec partiel)
-- Chaînes vides filtrées dans `parseAITasks`
-- `readAIConfig()` unifiée (suppression du doublon `loadCfg`)
-- Clé localStorage exposée via `DB.KEY` (plus de littéral dupliqué)
-- Blur sur l'éditeur de carte → sauvegarde automatique
-- `esc()` remontée au niveau App, cartes créées en parallèle (`Promise.all`)
-- Liste "terminé" : bouton `✓` dans chaque liste, cartes barrées/grissées, mis à jour au drag & drop, timestamp de complétion affiché
-- Sélecteur de thème : 4 sombres (Warm Night, Deep Ocean, Forest, Tokyo Night) et 4 clairs (Soft Sand, Mint, Lavender, Tokyo Light) via onglet dans la modale Configuration
-- `initTheme` refactoré avec 3 clés (mode / dark / light) et mode système (`prefers-color-scheme`)
-- Abstraction fournisseur IA : `queryAI` branche via switch (`'openai'` / `'anthropic'` / `'google'`) pour body, headers et parsing de réponse. Endpoint optionnel pour Anthropic, ignoré pour Google.
-- DnD tactile : migration `mousedown/mousemove/mouseup` → `pointerdown/pointermove/pointerup` + `setPointerCapture` + `touch-action: none`
-- Responsive : media query ≤640px, header compact, boutons tactiles, modales scrollables
-- Export / Import JSON du board
-- FAB : badge rouge `!` quand l'API n'est pas configurée, redevient `+` après sauvegarde de la config
-- Timestamp de complétion : `doneAt` stocké quand une carte glisse dans une liste "terminée", affiché sous le texte
-- Tuto : liste "Tuto" avec cartes-exemples dans `DB._default` au lieu d'une carte flottante
-- DnD : handler `pointercancel` + `cleanup()` défensif (libération capture persistante)
-
-## Corrections récentes (audit 2026-06-21 — qualité/DRY)
-
-- **Point 1 — `toggleForm(btn, form, input, open)`** : helper réutilisable pour le pattern open/close de formulaire. Remplace `openCardForm`/`closeCardForm` dans `buildList` et `openForm`/`closeForm` dans `buildAddListWidget`.
-- **Point 2 — `registerOverlay(overlay, closeFn)`** : helper qui enregistre les handlers click (fermeture au clic extérieur) et keydown (Escape) pour une modale/overlay. Utilisé par Config modal, Decompose modal, Cheatsheet, Search.
-- **Point 3 — `formatDoneAt(iso)`** : formatage de date unifié (3 occurrences → 1 fonction). Format : "Terminé le JJ/MM/AAAA à HH:MM".
-- **Point 4 — `extractCardData(el)` / `extractListData(el)`** : extraction des données carte/liste depuis le DOM. Utilisées par `cutCard`, `copyCard`, `cutList`, `copyList`.
-- **Point 5 — Uniformisation `mutate()`** : tous les appels `_snapshot()` + DB mutante passent désormais par `mutate(fn)`. Suppression de 7 `_snapshot()` raw (submitCard, doneToggle, submitList, _paste ×2, createSuggestionsList).
-- **Points 6-7-8-9-10** : non appliqués. Le CSS a déjà été traité lors de l'audit visuel. La délégation d'événements (point 9) et le rebuild board (point 8) apporteraient un risque de régression disproportionné pour le gain. `esc()` est légitime tel quel (sécurité XSS).
-
-## Corrections récentes (audit 2026-06-21 — perf/robustesse)
-
-- **Point 1 — Cache `getBoundingClientRect()` DnD** : les rects des listes et des cartes sont capturés une fois au début du drag (dans `_zoneCache` / `_cardCache`) et réutilisés pendant tout le déplacement. Évite les reflows forcés à chaque `pointermove`. Caches réinitialisés dans le callback `onDrop`.
-- **Point 3 — `DB.batch(fn)`** : nouveau mécanisme de batching. Suspend `_save()` (flag `_saving`), exécute `fn`, puis `_save()` une seule fois. Utilisé dans `createSuggestionsList()` (1 liste + 35 cartes = 1 écriture au lieu de 37) et dans `_paste()` pour les listes.
-- **Point 5 — Ghost DnD liste simplifié** : au lieu de `wrap.cloneNode(true)` (clone du DOM complet de la liste), un `ghostBuilder` crée un élément minimal (header sans boutons). L'option `ghostBuilder` est supportée par le moteur DnD.
-- **Point 8 — Import quota pre-check** : avant d'importer, estimation de la taille via `new Blob([jsonString]).size`. Si > 4.5 MB, avertissement avec confirmation avant l'écriture.
-- **Point 9 — `AbortController` cleanup** : le `clearTimeout(timer)` est maintenant dans un bloc `finally` autour du `fetch`, garantissant le nettoyage même en cas d'erreur réseau.
-- **Point 10 — Taille snapshot limitée** : `_snapshot()` ignore les snapshots > 200 KB (évite l'épuisement du `sessionStorage` avec 30 snapshots volumineux).
-- **Bugfix — `await` dans `forEach`** : le `lists.forEach()` dans `init()` utilisait un `await` dans un callback non-async (erreur de syntaxe introduite dans l'audit 01). Remplacé par `for...of`.
-- **Bugfix — Double `DB.exportJSON()`** : `_snapshot()` appelait `DB.exportJSON()` deux fois (une pour la vérification de taille, une pour le push). Corrigé avec une seule variable `json`.
+### Décisions non retenues
+- **Multi-boards** : sur-ingénierie pour un outil mono-utilisateur. Les listes séparent déjà les contextes.
 
 ## Pour reprendre le développement
 
-- Les helpers `toggleForm`, `registerOverlay`, `formatDoneAt`, `extractCardData`, `extractListData` sont dans le scope App, juste après `removeListDom`.
+### Conventions et points d'entrée
 - `mutate(fn)` est le seul point d'entrée pour les snapshots undo. Ne jamais appeler `_snapshot()` directement — utiliser `await mutate(() => DB.xxx(...))`.
 - `DB.batch(fn)` suspend les écritures `localStorage` le temps de l'exécution, puis persiste en une fois. Utiliser pour les opérations groupées (création multiple de cartes, import de liste avec cartes).
+- Les helpers `toggleForm`, `registerOverlay`, `formatDoneAt`, `extractCardData`, `extractListData`, `removeListDom` sont dans le scope App, juste après `removeListDom`.
+- Le thème est capturé au démarrage de App via `const Theme = window.__themeAPI`. Plus aucun accès à `window.__themeAPI` dans le code métier.
+- `Clipboard` est un objet (plus un `let _clipboard`), méthodes : `copyCard/cutCard/copyList/cutList/paste/clear/isEmpty/type`.
 
+### Architecture du code
 - L'ordre des modales et du debug suit le flow : config → décompose
 - Le prompt système est dans `PROMPT_SYSTEM` (template literal, substitution `{{TASK}}`)
 - La config API (provider, endpoint, apiKey, model) est stockée en localStorage, lue par `readAIConfig()` dans App
@@ -240,20 +127,127 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Le board est initialisé avec 5 listes par défaut via `DB._default` (dont "Tuto" avec cartes-exemples)
 - `buildList(list, cards)` est synchrone — les cartes sont passées en paramètre (pré-fetchées par l'appelant)
 - `buildCard(card, done)` est synchrone (reçoit une carte déjà construite)
-- Les deux fonctions `buildList` et `buildCard` sont maintenant synchrones
 - Les listes ont un champ `done` (booléen) ; si vrai, leurs cartes affichent `.card-done` (barré + grisé)
-- `buildCard(card, done)` accepte un second paramètre pour le style initial
 - Les cartes ont un champ `notes` (chaîne) persisté via `updateCardNotes`, éditable inline (textarea toggleable)
 - Les cartes ont un champ `doneAt` (ISO string ou null) stocké automatiquement quand glissées dans une liste "terminée"
 - `refreshHeaderInfo()` et `refreshCountBadge(id)` sont async, lisent les données via DB (pas le DOM)
-- `Clipboard` est un objet (plus un `let _clipboard`), méthodes : `copyCard/cutCard/copyList/cutList/paste/clear/isEmpty/type`
-- Le thème est capturé au démarrage de App via `const Theme = window.__themeAPI`, plus aucun accès à `window.__themeAPI` dans le code métier
-- `removeListDom(listId)` est une fonction partagée pour retirer une liste du DOM par ID
 
-## Convention de code
+### Convention de code
 - `make(tag, className)` pour créer des éléments
 - `autoResize(ta)` pour les textareas
 - `flashMessage(el, msg, cls, ms)` pour les messages de statut temporaires (stocke le timer sur `el._timer`)
 - Tableaux de bord en `const`, fonctions helpers en closures
 - Pas de commentaires dans le code (sauf en-têtes de sections)
 - Noms en français (utilisateur francophone)
+
+## Roadmap
+
+### P0 — Indispensable pour un usage partagé
+
+1. **Hébergement statique** — Déployer sur GitHub Pages / Netlify / Vercel. Le fichier ne fonctionne pas en `file://` (CORS bloque fetch). Sans ça, aucun non-technicien ne peut utiliser l'outil. Alternative : un script shell/batch qui lance un serveur local (`python -m http.server`).
+2. **Supprimer le mur de la clé API** — Demander à un utilisateur lambda de créer un compte OpenAI et coller une clé API est exactement la friction que l'outil est censé éliminer. Options : backend léger qui proxy les appels IA, intégration d'un modèle local (WebLLM / Ollama), ou mode dégradé avec templates de décomposition pré-faits (pas d'IA requise).
+3. **Onboarding** — La liste "Tuto" est un bon début mais ne montre pas pourquoi c'est différent d'un Trello. Ajouter une première décomposition guidée ("Essayez : ranger mon bureau") qui rend le concept tangible en 30 secondes.
+
+### P1 — Utile au quotidien
+
+4. **Persistance robuste** — localStorage est fragile (clear navigateur, changement de machine = perte totale). Options : sync fichier local, WebDAV, GitHub Gist, ou au minimum un rappel périodique "Pensez à exporter". L'export JSON existe mais il est manuel.
+5. **Feedback de progression** — La barre de progression existe mais il n'y a pas de gratification quand on termine une tâche. Un micro-feedback (animation, compteur de streak, "5 tâches terminées aujourd'hui") renforcerait la boucle motivationnelle — c'est central pour un outil anti-procrastination.
+6. **UX mobile** — Le responsive existe mais les raccourcis clavier (cœur de l'UX power-user) disparaissent sur mobile. Repenser le pattern mobile avec des gestes ou des boutons d'action rapide pour "ouvrir, décomposer, cocher".
+
+### P2 — Nice to have
+
+7. **Notes markdown** — Rendu basique (gras, italique, listes, code inline) dans la textarea de notes, toggle édition/aperçu (~70-110 LOC).
+8. **Tags** — Champ `tags: []` sur les cartes, chips colorés, filtrable via la recherche (~70-85 LOC).
+9. **Mode offline complet** — Service worker pour un fonctionnement 100% hors-ligne, cohérent avec la philosophie zéro-dépendance.
+
+## Changelog
+
+### 2026-06-21 — Bugs finaux
+- **Bug 1 — `getAfter` cartes recevait `x` au lieu de `y`** : le moteur DnD appelle `cfg.getAfter(container, x, y, ghostEl)` mais le callback carte déclarait `(container, y)`, donc `y` recevait la valeur de `x`. Corrigé en `(container, x, y)`.
+- **Bug 2 — Cache `_cardCache` jamais invalidé entre listes** : le cache des rects des cartes était construit pour une liste et réutilisé tel quel quand le drag survolait une autre liste. Corrigé en keyant le cache par container (`_cardCache._container`).
+- **Bug 3 — Double snapshot undo sur « Sauver »** : blur + click déclenchaient `saveEdit()` deux fois. Corrigé avec un guard `if (!wrap.classList.contains('editing')) return;` en tête de `saveEdit`.
+- **Bug 4 — « Annuler » sauvegardait quand même** : `exitEdit()` retirait `.editing`, puis le blur appelait `saveEdit()`. Le guard du Bug 3 corrige aussi ce bug.
+- **Bug 7 — `importFile.value = ''` hors callback** : reset de l'input synchrone avant `onload`. Déplacé dans un `finally` du `onload` et dans `onerror`.
+- **Bug 8 — `_selList` orphelin après suppression de liste** : le handler appelait `selectCard(null)` mais ne désélectionnait pas `_selList`. Remplacé par `clearSelection()`.
+- **Bug 12 — Recherche sélectionnait carte dans liste repliée** : cliquer sur un résultat de recherche dans une liste collapsed sélectionnait la carte sans la rendre visible. Ajout d'un dépliage automatique.
+
+### 2026-06-21 — Architecture
+- **Frontières DB** : ajout de `DB.exportJSON()`, `DB.importJSON(json)`, `DB.reset()`, `DB.restoreJSON(json)`, `DB.getAllCards()`. Plus aucun accès à `localStorage` / `DB.KEY` hors du module DB.
+- **DOM source de vérité** : `refreshHeaderInfo()` et `refreshCountBadge()` lisent les données via DB (pas `querySelectorAll`).
+- **Init parallèle** : `init()` utilise `DB.getAllCards()` + `for...of` au lieu d'un `forEach` avec `await`.
+- **buildList/buildCard synchrones** : les cartes sont pré-fetchées par l'appelant.
+- **Presse-papier encapsulé** : `Clipboard` objet avec méthodes explicites, plus de variable globale `_clipboard`.
+- **mutate helper** : `mutate(fn)` = `_snapshot()` + `fn()`. Remplace ~15 appels `_snapshot()` raw.
+- **Theme API** : `const Theme = window.__themeAPI` capturé au début de App.
+- **removeListDom(listId)** : fonction partagée pour retirer une liste du DOM par ID.
+- Undo/Redo via `DB.exportJSON()` / `DB.restoreJSON()`, reset via `DB.reset()`.
+
+### 2026-06-21 — Qualité/DRY
+- `toggleForm(btn, form, input, open)` : helper pour le pattern open/close de formulaire.
+- `registerOverlay(overlay, closeFn)` : helper pour fermeture overlay (clic extérieur + Escape).
+- `formatDoneAt(iso)` : formatage de date unifié ("Terminé le JJ/MM/AAAA à HH:MM").
+- `extractCardData(el)` / `extractListData(el)` : extraction des données depuis le DOM.
+
+### 2026-06-21 — Perf/robustesse
+- Cache `getBoundingClientRect()` DnD : rects listes et cartes capturés une fois au début du drag.
+- `DB.batch(fn)` : suspend les écritures localStorage le temps de la batch, persiste en une fois.
+- Ghost DnD liste simplifié : `ghostBuilder` crée un clone minimal (header sans boutons).
+- Import quota pre-check : alerte si > 4.5 MB.
+- `AbortController` cleanup : `clearTimeout` dans `finally` du fetch.
+- Taille snapshot limitée à 200 KB.
+- Bugfix : `await` dans `forEach` → `for...of`.
+- Bugfix : double `DB.exportJSON()` dans `_snapshot()`.
+
+### 2026-06-21 — Visuel (CSS)
+- Couleurs hardcodées (`rgba(232,168,90,…)`) remplacées par `color-mix(in srgb, var(--accent) X%, transparent)` (10 règles CSS).
+- `.add-list-btn` : suppression des 16 lignes de surcharge par thème, `:hover` unique avec `color-mix`.
+- Debug panel : couleurs → variables de thème (`--surface-2`, `--text`, `--accent`, `--danger`).
+- Ghost DnD : `box-shadow: 0 8px 32px rgba(0,0,0,.6)` → `box-shadow: var(--shadow)`.
+- `.cfg-status.success` : `#2ecc71` → `var(--accent)`.
+- Responsive : `.cheatsheet-intro` masqué, `--list-width` réduit à 260px sur mobile.
+- États visuels : `:focus-visible`, `:active`, `:disabled` sur boutons, `cursor: default` sur `.cheatsheet .row`.
+- Fallback `rgba(var(--accent-rgb), .X)` avant chaque `color-mix()` pour les WIP warnings.
+
+### 2026-06-21 — Bugs
+- Guards null DOM sur `querySelector` dans `cutCard`, `copyCard`, `cutList`, `copyList` et la recherche.
+- `DB.toggleListDone(id, doneAt)` : second paramètre optionnel, supprime l'appel redondant à `setCardsDoneAt()`.
+- `reader.onerror` ajouté sur l'import JSON.
+- Centralisation Escape : le handler dédié de la cheatsheet est supprimé, géré par `BINDINGS['Escape']`.
+- `_selCard` orphelin : guard dans `delListBtn` (si carte sélectionnée appartient à la liste supprimée).
+- Ordre DnD DOM/DB : `wrap.dataset.listId = toListId` après `await mutate(() => DB.moveCard(...))`.
+
+### 2026-06-20
+- Raccourcis clavier vim-like (~160 LOC) : navigation h/l/j/k, actions n/r/e/x/y/p + majuscules, focus 1-9, cheatsheet `?`.
+- Presse-papier unifié, sélection visuelle (bordure accent, actions toujours visibles).
+- Cheatsheet toggleable (overlay, deux colonnes carte/liste, principes kanban, responsive).
+- Indicateur de progression (barre + pourcentage dans le header).
+- WIP warning (bordure + badge accent quand liste In Progress ≥ 3 cartes).
+- Repli des listes (bouton ▾/▸, état persisté).
+- Liste "Waiting" ajoutée par défaut (kanban canonique).
+- Undo/Redo (u/Ctrl+Y, 30 snapshots sessionStorage).
+- Bugfixes : bleed-through clavier sur overlay recherche, Escape cheatsheet, éditeur bloqué si texte vide, import quota, _selCard orphelin, contextmenu DnD.
+
+### 2026-06-19
+- `DB.setCardsDoneAt(listId, doneAt)` : méthode batch pour les écritures groupées.
+- `_save()` wrappé dans try/catch (QuotaExceededError → alert).
+- `parseAITasks` : détection des guillemets dans le compteur de crochets.
+- Prompt OpenAI : ajout d'un message `role: 'user'` (compatibilité élargie).
+- `flashMessage(el, msg, cls, ms)` : fonction partagée.
+- `close()` de la modale décomposition : nettoyage du timer de statut.
+- `maxlength="200"` sur les inputs de nom (board et listes).
+
+### 2026-06-17
+- Timeout 60s sur fetch API via `AbortController`.
+- `init()` wrappé dans try/catch avec bouton de réinitialisation en cas de crash.
+- `createSuggestionsList` : écritures DB avant DOM.
+- Chaînes vides filtrées dans `parseAITasks`, `readAIConfig()` unifiée.
+- DB.KEY exposée (plus de littéral dupliqué).
+- Blur sur éditeur de carte → sauvegarde automatique.
+- Liste "terminé" : bouton ✓, cartes barrées, timestamp de complétion, mis à jour au DnD.
+- Sélecteur de thème : 8 variantes (4 sombres, 4 clairs) via onglet dans Configuration.
+- `initTheme` refactoré avec 3 clés (mode/dark/light) et mode système (`prefers-color-scheme`).
+- Abstraction fournisseur IA : switch OpenAI/Anthropic/Google.
+- DnD tactile : `mousedown` → `pointerdown` + `setPointerCapture` + `touch-action: none`.
+- Responsive : media query ≤640px, header compact, modales scrollables.
+- Export/Import JSON, FAB badge rouge si API non configurée.
+- Tuto : liste avec cartes-exemples dans `DB._default`.
