@@ -1,6 +1,6 @@
 # KanbanJS — Projet anti-procrastination
 
-Fichier unique `kanban.html` (~2660 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
+Fichier unique `kanban.html` (~3010 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
 
 ## Concept
 
@@ -16,7 +16,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - Sélecteur de thème dans la modale Configuration (onglet "Thèmes") : 4 sombres, 4 clairs
 - Bouton reset (purge `kanbanjs:state`, rechargement)
 - Export / Import JSON du board (boutons ↓ ↑ dans le header)
-- Indicateur de progression : barre + pourcentage dans le header (`3/8`, `38%`), masqué sur mobile
+- Indicateur de progression : barre + pourcentage dans le header (`3/8`, `38%`)
 
 ### Clavier
 - Raccourcis vim-like : minuscule = carte, majuscule = liste
@@ -78,7 +78,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 | Module | Responsabilité | API publique |
 |---|---|---|
 | `initTheme` | IIFE, lit/applique/persiste le thème | lecture au load |
-| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, getCards, createCard, updateCard, updateCardNotes, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard` |
+| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, toggleCollapsed, getCards, createCard, updateCard, updateCardNotes, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard` |
 | `DnD` | Moteur de drag & drop générique | `start(dragEl, id, { ghostEl?, ghostClass?, phClass?, getZone, getAfter, getPos, skip? }, onDrop)` |
 | `App` | UI Kanban | `init()` boot la session |
 
