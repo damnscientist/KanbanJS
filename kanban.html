@@ -2828,10 +2828,10 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     BINDINGS[String(n)] = { fn: (i => () => focusList(i))(n), when: () => !_inInput() };
   }
   Object.assign(BINDINGS, {
-    h:      { fn: prevCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
-    l:      { fn: nextCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
-    j:      { fn: prevList,     when: () => !_inInput() },
-    k:      { fn: nextList,     when: () => !_inInput() },
+    h:      { fn: prevList,     when: () => !_inInput() },
+    l:      { fn: nextList,     when: () => !_inInput() },
+    j:      { fn: prevCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
+    k:      { fn: nextCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
     n:      { fn: newCardAtSel, when: () => _selList && _selList.isConnected && !_inInput() },
     r:      { fn: _renameCard,  when: () => _selCard && _selCard.isConnected && !_inInput() },
     e:      { fn: _openNotes,   when: () => _selCard && _selCard.isConnected && !_inInput() },
@@ -2901,7 +2901,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     const colB = make('div', 'col');
 
     colA.appendChild(rows('Cartes', [
-      [['h','l'], 'Nav. \u2191/\u2193 dans la liste'],
+      [['j','k'], 'Nav. \u2191/\u2193 dans la liste'],
       [['n'],     'Nouvelle carte'],
       [['r'],     'Renommer'],
       [['e'],     'Ouvrir les notes'],
@@ -2910,7 +2910,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       [['p'],     'Coller'],
     ]));
     colB.appendChild(rows('Listes', [
-      [['j','k'], 'Nav. \u2190/\u2192'],
+      [['h','l'], 'Nav. \u2190/\u2192'],
       [['N'],     'Nouvelle liste'],
       [['E'],     'Renommer'],
       [['D'],     'Marquer termin\u00E9e'],

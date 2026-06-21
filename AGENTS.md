@@ -24,7 +24,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 
 ### Clavier
 - Raccourcis vim-like : minuscule = carte, majuscule = liste
-- Navigation : `h`/`l` cartes ↑/↓, `j`/`k` listes ←/→, `1-9` focus liste n
+- Navigation : `h`/`l` listes ←/→, `j`/`k` cartes ↓/↑, `1-9` focus liste n
 - Actions carte : `n` créer, `r` renommer, `e` ouvrir notes, `x` couper, `y` copier, `p` coller
 - Actions liste : `N` créer, `E` renommer, `D` toggle terminé, `X` couper, `Y` copier, `P` coller
 - `Esc` désélectionne la carte/liste courante ou ferme l'overlay actif, `?` affiche l'aide clavier
