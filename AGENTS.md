@@ -78,7 +78,7 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 | Module | Responsabilité | API publique |
 |---|---|---|
 | `initTheme` | IIFE, lit/applique/persiste le thème | lecture au load |
-| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, toggleCollapsed, getCards, getAllCards, createCard, updateCard, updateCardNotes, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard, exportJSON, importJSON, reset, restoreJSON` |
+| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, toggleCollapsed, getCards, getAllCards, createCard, updateCard, updateCardNotes, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard, exportJSON, importJSON, reset, restoreJSON, batch` |
 | `DnD` | Moteur de drag & drop générique | `start(dragEl, id, { ghostEl?, ghostClass?, phClass?, getZone, getAfter, getPos, skip? }, onDrop)` |
 | `App` | UI Kanban | `init()` boot la session |
 
@@ -206,10 +206,22 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 - **Point 5 — Uniformisation `mutate()`** : tous les appels `_snapshot()` + DB mutante passent désormais par `mutate(fn)`. Suppression de 7 `_snapshot()` raw (submitCard, doneToggle, submitList, _paste ×2, createSuggestionsList).
 - **Points 6-7-8-9-10** : non appliqués. Le CSS a déjà été traité lors de l'audit visuel. La délégation d'événements (point 9) et le rebuild board (point 8) apporteraient un risque de régression disproportionné pour le gain. `esc()` est légitime tel quel (sécurité XSS).
 
+## Corrections récentes (audit 2026-06-21 — perf/robustesse)
+
+- **Point 1 — Cache `getBoundingClientRect()` DnD** : les rects des listes et des cartes sont capturés une fois au début du drag (dans `_zoneCache` / `_cardCache`) et réutilisés pendant tout le déplacement. Évite les reflows forcés à chaque `pointermove`. Caches réinitialisés dans le callback `onDrop`.
+- **Point 3 — `DB.batch(fn)`** : nouveau mécanisme de batching. Suspend `_save()` (flag `_saving`), exécute `fn`, puis `_save()` une seule fois. Utilisé dans `createSuggestionsList()` (1 liste + 35 cartes = 1 écriture au lieu de 37) et dans `_paste()` pour les listes.
+- **Point 5 — Ghost DnD liste simplifié** : au lieu de `wrap.cloneNode(true)` (clone du DOM complet de la liste), un `ghostBuilder` crée un élément minimal (header sans boutons). L'option `ghostBuilder` est supportée par le moteur DnD.
+- **Point 8 — Import quota pre-check** : avant d'importer, estimation de la taille via `new Blob([jsonString]).size`. Si > 4.5 MB, avertissement avec confirmation avant l'écriture.
+- **Point 9 — `AbortController` cleanup** : le `clearTimeout(timer)` est maintenant dans un bloc `finally` autour du `fetch`, garantissant le nettoyage même en cas d'erreur réseau.
+- **Point 10 — Taille snapshot limitée** : `_snapshot()` ignore les snapshots > 200 KB (évite l'épuisement du `sessionStorage` avec 30 snapshots volumineux).
+- **Bugfix — `await` dans `forEach`** : le `lists.forEach()` dans `init()` utilisait un `await` dans un callback non-async (erreur de syntaxe introduite dans l'audit 01). Remplacé par `for...of`.
+- **Bugfix — Double `DB.exportJSON()`** : `_snapshot()` appelait `DB.exportJSON()` deux fois (une pour la vérification de taille, une pour le push). Corrigé avec une seule variable `json`.
+
 ## Pour reprendre le développement
 
 - Les helpers `toggleForm`, `registerOverlay`, `formatDoneAt`, `extractCardData`, `extractListData` sont dans le scope App, juste après `removeListDom`.
 - `mutate(fn)` est le seul point d'entrée pour les snapshots undo. Ne jamais appeler `_snapshot()` directement — utiliser `await mutate(() => DB.xxx(...))`.
+- `DB.batch(fn)` suspend les écritures `localStorage` le temps de l'exécution, puis persiste en une fois. Utiliser pour les opérations groupées (création multiple de cartes, import de liste avec cartes).
 
 - L'ordre des modales et du debug suit le flow : config → décompose
 - Le prompt système est dans `PROMPT_SYSTEM` (template literal, substitution `{{TASK}}`)

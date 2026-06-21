@@ -1243,6 +1243,7 @@ const DB = (() => {
 
   // Cache mémoire (objets bruts, manipulés en place)
   let _state;
+  let _saving = true;
 
   // ── Persistence ───────────────────────────────────────────
   function _load() {
@@ -1259,6 +1260,7 @@ const DB = (() => {
   }
 
   function _save() {
+    if (!_saving) return;
     try {
       localStorage.setItem(KEY, JSON.stringify(_state));
     } catch (e) {
@@ -1385,6 +1387,12 @@ const DB = (() => {
     // ── Aggregate ───────────────────────────────────────────
     async getAllCards() { return _clone(_state.cards); },
 
+    // ── Batching ────────────────────────────────────────────
+    async batch(fn) {
+      _saving = false;
+      try { await fn(); } finally { _saving = true; _save(); }
+    },
+
     // ── Export / Import / Reset ──────────────────────────────
     async exportJSON()   { return JSON.stringify(_state); },
     async importJSON(json) {
@@ -1459,7 +1467,7 @@ const DnD = (() => {
     ghostEl = cfg.ghostEl || dragEl;
     const rect = ghostEl.getBoundingClientRect();
 
-    ghost = ghostEl.cloneNode(true);
+    ghost = cfg.ghostBuilder ? cfg.ghostBuilder() : ghostEl.cloneNode(true);
     ghost.style.cssText = `
       position: fixed;
       left: ${rect.left}px;
@@ -1689,8 +1697,10 @@ const App = (() => {
   function _saveStack(key, arr) { sessionStorage.setItem(key, JSON.stringify(arr)); }
 
   async function _snapshot() {
+    const json = await DB.exportJSON();
+    if (json.length > 200_000) return;
     const undo = _loadStack(UK);
-    undo.push(await DB.exportJSON());
+    undo.push(json);
     if (undo.length > MAX_UNDO) undo.shift();
     _saveStack(UK, undo);
     _saveStack(RK, []);
@@ -1823,13 +1833,20 @@ const App = (() => {
       await refreshHeaderInfo();
     });
 
+    let _zoneCache = null;
+    let _cardCache = null;
+
     // Drag & drop souris
     DnD.start(wrap, card.id, {
       getZone(x, y) {
-        // Itération directe sur les boîtes englobantes — évite
-        // le piège de pointer-events non hérité du ghost.
-        for (const list of boardEl.querySelectorAll('.list')) {
-          const r = list.getBoundingClientRect();
+        if (!_zoneCache) {
+          _zoneCache = new Map();
+          for (const list of boardEl.querySelectorAll('.list')) {
+            _zoneCache.set(list, list.getBoundingClientRect());
+          }
+        }
+        for (const [list, r] of _zoneCache) {
+          if (!list.isConnected) continue;
           if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
             return { container: list.querySelector('.cards'), id: list.dataset.id };
           }
@@ -1837,10 +1854,16 @@ const App = (() => {
         return null;
       },
       getAfter(container, y) {
-        const cards = [...container.querySelectorAll('.card')];
-        for (const c of cards) {
+        if (!_cardCache) {
+          _cardCache = new Map();
+          for (const c of container.querySelectorAll('.card')) {
+            if (c !== wrap) _cardCache.set(c, c.getBoundingClientRect());
+          }
+        }
+        for (const c of container.querySelectorAll('.card')) {
           if (c === wrap) continue;
-          const box = c.getBoundingClientRect();
+          const box = _cardCache.get(c);
+          if (!box) continue;
           if (y < box.top + box.height / 2) return c;
         }
         return null;
@@ -1848,6 +1871,8 @@ const App = (() => {
       getPos(container, ph) { return [...container.children].indexOf(ph); },
       skip(el) { return el.classList.contains('editing'); },
     }, async (cardId, toListId, newPos) => {
+      _zoneCache = null;
+      _cardCache = null;
       const sourceListId = wrap.dataset.listId;
       await mutate(() => DB.moveCard(cardId, toListId, newPos));
       wrap.dataset.listId = toListId;
@@ -2016,6 +2041,15 @@ const App = (() => {
     DnD.start(headerEl, list.id, {
       ghostEl:   wrap,
       ghostClass: 'dnd-ghost-list',
+      ghostBuilder() {
+        const g = make('div');
+        g.className = 'list dnd-ghost-list';
+        g.style.width = 'var(--list-width)';
+        const h = headerEl.cloneNode(true);
+        h.querySelectorAll('.btn-icon').forEach(b => b.remove());
+        g.appendChild(h);
+        return g;
+      },
       phClass:   'list-placeholder',
       getZone(x, y) {
         const r = boardEl.getBoundingClientRect();
@@ -2213,6 +2247,8 @@ const App = (() => {
           }
           if (!confirm('Remplacer le board actuel par le fichier importé ? Les données actuelles seront perdues.')) return;
           try {
+            const sizeBytes = new Blob([reader.result]).size;
+            if (sizeBytes > 4_500_000 && !confirm(`Le fichier fait ${Math.round(sizeBytes/1024/1024*10)/10} MB. L'import peut échouer. Continuer ?`)) return;
             await DB.importJSON(reader.result);
           } catch (e) {
             if (e.name === 'QuotaExceededError' || e.message.includes('stockage')) {
@@ -2401,8 +2437,11 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 60_000);
-      resp = await fetch(url, { method: 'POST', headers, body, signal: ctrl.signal });
-      clearTimeout(timer);
+      try {
+        resp = await fetch(url, { method: 'POST', headers, body, signal: ctrl.signal });
+      } finally {
+        clearTimeout(timer);
+      }
     } catch (netErr) {
       log('ERREUR RÉSEAU : ' + netErr.message);
       throw new Error(netErr.name === 'AbortError'
@@ -2470,14 +2509,13 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     const existing = allLists.find(l => l.title === 'Suggestions');
     let oldId = existing ? existing.id : null;
 
-    // 1. Écritures DB (avant toute manipulation DOM)
-    const list = await mutate(async () => {
+    const list = await mutate(() => DB.batch(async () => {
       if (existing) await DB.deleteList(existing.id);
       const l = await DB.createList('Suggestions');
       await DB.reorderList(l.id, 0);
       await Promise.all(tasks.map(t => DB.createCard(l.id, t)));
       return l;
-    });
+    }));
     const cards = await DB.getCards(list.id);
 
     // 2. Mise à jour DOM
@@ -2695,16 +2733,19 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       await refreshCountBadge(listId);
       await refreshHeaderInfo();
     } else if (data.type === 'list') {
-      const list  = await mutate(() => DB.createList(data.title));
-      if (_selList && _selList.isConnected) {
-        const lists = [...boardEl.querySelectorAll('.list')];
-        const idx   = lists.indexOf(_selList);
-        await DB.reorderList(list.id, idx + 1);
-      }
-      for (const c of data.cards) {
-        const card = await DB.createCard(list.id, c.text);
-        if (c.notes) await DB.updateCardNotes(card.id, c.notes);
-      }
+      const list = await mutate(() => DB.batch(async () => {
+        const l = await DB.createList(data.title);
+        if (_selList && _selList.isConnected) {
+          const lists = [...boardEl.querySelectorAll('.list')];
+          const idx   = lists.indexOf(_selList);
+          await DB.reorderList(l.id, idx + 1);
+        }
+        for (const c of data.cards) {
+          const card = await DB.createCard(l.id, c.text);
+          if (c.notes) await DB.updateCardNotes(card.id, c.notes);
+        }
+        return l;
+      }));
       const cards = await DB.getCards(list.id);
       const listEl = buildList(list, cards);
       if (_selList && _selList.isConnected) {
@@ -3045,11 +3086,11 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
       const lists = await DB.getLists();
       const allCards = await DB.getAllCards();
-      lists.forEach(l => {
+      for (const l of lists) {
         const listEl = buildList(l, allCards.filter(c => c.listId === l.id));
         boardEl.appendChild(listEl);
         await refreshCountBadge(l.id);
-      });
+      }
 
       buildAddListWidget();
       await refreshHeaderInfo();
