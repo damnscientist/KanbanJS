@@ -1778,6 +1778,7 @@ const DnD = (() => {
   }
 
   function onMove(e) {
+    e.preventDefault();
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
     if (!started && Math.hypot(dx, dy) < THRESHOLD) return;
@@ -1789,6 +1790,7 @@ const DnD = (() => {
   }
 
   function onUp(e) {
+    e.preventDefault();
     if (!started) { cleanup(); return; }
     document.removeEventListener('pointermove', onMove);
     document.removeEventListener('pointerup',   onUp);
@@ -1880,6 +1882,7 @@ const DnD = (() => {
         document.addEventListener('pointercancel', onCancel);
       } else {
         // Touch : tap-long 200ms avant d'activer le drag
+        e.preventDefault(); // immédiat : empêche click + zoom sur iOS
         touchPending = true;
         const startTX = e.clientX;
         const startTY = e.clientY;
