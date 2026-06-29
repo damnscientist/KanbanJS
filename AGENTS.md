@@ -175,11 +175,20 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 
 ## Changelog
 
+### 2026-06-29 — Correctifs mobile (post-refonte)
+- **`touch-action: auto` sur mobile** : `.card` et `.list-header` repassent en `touch-action: auto` dans la media query `≤640px`. Avant, `touch-action: none` (nécessaire au DnD desktop) bloquait le scroll natif du board sur mobile — le tap-long de 200ms ne servait à rien puisque le navigateur ne pouvait pas scroller. Le JS pose maintenant `touchAction = 'none'` dynamiquement dans `beginCapture()` et le restaure dans `cleanup()`.
+- **FAB recouvert par la toolbar** : le FAB (`z-index: 5000`) était masqué par la toolbar mobile (`z-index: 8000`) quand une carte était sélectionnée. FAB → `z-index: 8100` sur mobile + `showToolbar()`/`hideToolbar()` repositionnent le FAB à `calc(84px + safe-area)` au-dessus de la toolbar.
+- **Sélection de texte iPhone pendant le DnD** : Safari iOS a besoin du préfixe `-webkit-user-select: none` — le `user-select` standard est ignoré. Ajout du préfixe sur `.card`, `.card-text`, `.list-header`, `.list-title`, `header h1`, `.board-name`. Ajout de `-webkit-touch-callout: none` sur `.card` et `.list-header`. Le JS pose aussi `webkitUserSelect` dans `startDrag()`/`cleanup()`.
+- **Textarea de notes invisible jusqu'à la frappe** : `autoResize()` mesurait un `scrollHeight` potentiellement nul quand le textarea venait de passer de `display:none` à `display:block`. Hardening : guard `offsetParent`, `Math.max(scrollHeight, rows*20, 28)`, `rows=2` sur le textarea notes. `toggleNotes()` enrobe `autoResize()` dans un double `requestAnimationFrame`. Nouveau handler `visualViewport.resize` pour les notes sur mobile.
+- **Délai tap-long réduit** : 320ms → 200ms. Le délai reste nécessaire pour distinguer scroll et drag sur touch, mais 200ms est suffisant et nettement plus réactif.
+- **Recherche dans liste repliée** : le `colBtn.click()` pour déplier était async — la classe `.collapsed` n'était pas retirée avant `selectCard()`, donc la carte était sélectionnée mais invisible. Retrait synchrone de `.collapsed` avant `selectCard()`, puis `colBtn.click()` pour persister.
+- **Bouton "Ajouter une liste"** : n'avait pas `scroll-snap-align`, causant un scroll non fluide en fin de board. Ajout de `scroll-snap-align: start` sur `.add-list-btn` et `.add-list-form` dans la media query mobile.
+
 ### 2026-06-29 — Refonte UX mobile
 - **Toolbar contextuelle mobile** : barre fixe en bas d'écran (`#mobileToolbar`, z-index 8000) avec 4 boutons (Modifier / Notes / Terminer / Supprimer). Apparaît au tap sur une carte via `MutationObserver` sur `.card.card-selected:not(.editing)`. Se masque automatiquement à l'entrée en mode édition, à la fermeture de sélection, ou au tap ailleurs.
 - **Menu ⋯ header mobile** : bottom-sheet (`#headerMenuOverlay`, z-index 19000) regroupant les 6 actions secondaires (Config IA, Thème, Aide, Export, Import, Reset). Les boutons desktop correspondants sont masqués via classe `.header-desktop-only`.
 - **Bouton recherche mobile** : icône 🔍 (`#searchMobileBtn`) dans le header, visible uniquement sur mobile, ouvre directement la search overlay.
-- **DnD tactile tap-long** : sur `pointerType === 'touch'`, le drag ne s'active qu'après 320ms de pression immobile. Si le doigt bouge de > 8px avant le délai, le scroll natif est libéré. Souris et stylet restent immédiats. Résout le conflit scroll horizontal / drag.
+- **DnD tactile tap-long** : sur `pointerType === 'touch'`, le drag ne s'active qu'après 200ms de pression immobile. Si le doigt bouge de > 8px avant le délai, le scroll natif est libéré. Souris et stylet restent immédiats. Résout le conflit scroll horizontal / drag.
 - **Modales bottom-sheet** : sur mobile, toutes les `.modal-overlay` s'affichent en bas de l'écran (`align-items: flex-end`, `border-radius` top-only, `max-height: 90dvh`).
 - **Hauteur listes `dvh`** : `max-height: calc(100dvh - 88px)` sur mobile — tient compte du clavier virtuel sur iOS/Android.
 - **Layout board mobile** : `--list-width: 82vw`, `scroll-snap-type: x mandatory`, `overscroll-behavior-x: contain` — navigation liste par liste au swipe.

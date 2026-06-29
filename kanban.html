@@ -210,6 +210,7 @@
       font-weight: 700;
       letter-spacing: .5px;
       color: var(--accent);
+      -webkit-user-select: none;
       user-select: none;
     }
 
@@ -224,6 +225,8 @@
       transition: border-color var(--transition), color var(--transition);
       outline: none;
       min-width: 120px;
+      -webkit-user-select: none;
+      user-select: none;
     }
     .board-name:hover, .board-name:focus {
       border-color: var(--accent);
@@ -324,7 +327,9 @@
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
       cursor: grab;
+      -webkit-user-select: none;
       user-select: none;
+      -webkit-touch-callout: none;
     }
     .list-header:active { cursor: grabbing; }
     .list-header input,
@@ -347,6 +352,8 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      -webkit-user-select: none;
+      user-select: none;
     }
     .list-title:hover { border-color: var(--border-hover); }
     .list-title:focus {
@@ -436,7 +443,9 @@
       border-radius: var(--radius-sm);
       padding: 9px 10px;
       cursor: grab;
+      -webkit-user-select: none;
       user-select: none;
+      -webkit-touch-callout: none;
       position: relative;
       transition: box-shadow var(--transition), border-color var(--transition), opacity var(--transition);
       display: flex;
@@ -453,6 +462,8 @@
       line-height: 1.5;
       word-break: break-word;
       white-space: pre-wrap;
+      -webkit-user-select: none;
+      user-select: none;
     }
 
     .card-done .card-text {
@@ -1082,6 +1093,11 @@
         scroll-snap-align: start;
         max-height: calc(100dvh - 88px); /* dvh = tient compte du clavier virtuel */
       }
+      .add-list-btn, .add-list-form { scroll-snap-align: start; }
+
+      /* touch-action auto sur mobile : on laisse le navigateur gérer le scroll
+         natif. Le DnD JS positionne touch-action:none dynamiquement au début du drag. */
+      .card, .list-header { touch-action: auto; }
 
       /* — Cartes : actions toujours visibles — */
       .card-actions {
@@ -1110,6 +1126,7 @@
         font-size: 22px;
         bottom: calc(16px + env(safe-area-inset-bottom, 0px));
         right: 16px;
+        z-index: 8100; /* au-dessus de la toolbar mobile (z-index 8000) */
       }
 
       /* — Padding bas des listes pour ne pas être caché par le FAB — */
@@ -1701,6 +1718,7 @@ const DnD = (() => {
     if (dragEl && pointerId != null) {
       try { dragEl.releasePointerCapture(pointerId); } catch (_) {}
     }
+    if (dragEl) dragEl.style.touchAction = '';
     if (ghost)  { ghost.remove(); ghost = null; }
     if (ph)     { ph.remove();    ph = null; }
     if (_ctxMenu) { document.removeEventListener('contextmenu', _ctxMenu); _ctxMenu = null; }
@@ -1715,11 +1733,13 @@ const DnD = (() => {
     cfg     = null;
     pointerId = null;
     document.body.style.userSelect = '';
+    document.body.style.webkitUserSelect = '';
   }
 
   function startDrag() {
     started = true;
     document.body.style.userSelect = 'none';
+    document.body.style.webkitUserSelect = 'none';
     _ctxMenu = e => e.preventDefault();
     document.addEventListener('contextmenu', _ctxMenu);
     ghostEl = cfg.ghostEl || dragEl;
@@ -1812,7 +1832,7 @@ const DnD = (() => {
       const isTouch = e.pointerType === 'touch';
 
       // Sur touch : on autorise d'abord le scroll natif (touch-action par défaut).
-      // Le drag ne démarre qu'après un tap long de 300ms ou si le mouvement
+      // Le drag ne démarre qu'après un tap long de 200ms ou si le mouvement
       // dépasse le seuil THRESHOLD sans avoir annulé (cf. onMove).
       let longPressTimer = null;
       let touchPending   = false;
@@ -1821,6 +1841,7 @@ const DnD = (() => {
         touchPending = false;
         if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
         e.preventDefault();
+        dragElement.style.touchAction = 'none';
         try { dragElement.setPointerCapture(e.pointerId); } catch (_) {}
 
         const rect = dragElement.getBoundingClientRect();
@@ -1843,6 +1864,7 @@ const DnD = (() => {
       if (!isTouch) {
         // Souris : comportement original immédiat
         e.preventDefault();
+        dragElement.style.touchAction = 'none';
         dragElement.setPointerCapture(e.pointerId);
 
         const rect = dragElement.getBoundingClientRect();
@@ -1861,7 +1883,7 @@ const DnD = (() => {
         document.addEventListener('pointerup',   onUp);
         document.addEventListener('pointercancel', onCancel);
       } else {
-        // Touch : tap-long 320ms avant d'activer le drag
+        // Touch : tap-long 200ms avant d'activer le drag
         touchPending = true;
         const startTX = e.clientX;
         const startTY = e.clientY;
@@ -1869,7 +1891,7 @@ const DnD = (() => {
         longPressTimer = setTimeout(() => {
           longPressTimer = null;
           if (touchPending) beginCapture();
-        }, 320);
+        }, 200);
 
         // Si le doigt bouge significativement avant le délai → annuler le drag,
         // laisser le scroll natif se produire
@@ -1919,8 +1941,9 @@ const App = (() => {
   }
 
   function autoResize(ta) {
+    if (!ta.offsetParent) return; // encore display:none
     ta.style.height = 'auto';
-    ta.style.height = ta.scrollHeight + 'px';
+    ta.style.height = Math.max(ta.scrollHeight, ta.rows ? ta.rows * 20 : 28) + 'px';
   }
 
   async function refreshHeaderInfo() {
@@ -2144,6 +2167,7 @@ const App = (() => {
 
     // Notes
     const notesEl = make('textarea', 'card-notes');
+    notesEl.rows = 2;
     notesEl.placeholder = 'Note personnelle\u2026';
     notesEl.value = card.notes || '';
 
@@ -2183,7 +2207,9 @@ const App = (() => {
       notesEl.classList.toggle('open');
       if (notesEl.classList.contains('open')) {
         notesEl.focus();
-        autoResize(notesEl);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => autoResize(notesEl));
+        });
       }
     }
 
@@ -3513,8 +3539,9 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
         row.innerHTML = '<span class="search-result-text">' + esc(m.text) + '</span><span class="search-result-list">' + esc(m.listTitle) + '</span>';
         row.addEventListener('click', () => {
           if (m.list.classList.contains('collapsed')) {
+            m.list.classList.remove('collapsed'); // synchrone : la carte devient visible immédiatement
             const colBtn = m.list.querySelector('.btn-icon[title*="Replier"]');
-            if (colBtn) colBtn.click();
+            if (colBtn) colBtn.click(); // persiste l'état de façon asynchrone
           }
           selectList(m.list); selectCard(m.card); close();
         });
@@ -3652,10 +3679,16 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     const mtDelete = document.getElementById('mtDelete');
 
     function showToolbar() {
-      if (isMobile()) toolbar.classList.add('open');
+      if (isMobile()) {
+        toolbar.classList.add('open');
+        const fab = document.getElementById('decomposeFab');
+        if (fab) fab.style.bottom = 'calc(84px + env(safe-area-inset-bottom, 0px))';
+      }
     }
     function hideToolbar() {
       toolbar.classList.remove('open');
+      const fab = document.getElementById('decomposeFab');
+      if (fab) fab.style.bottom = '';
     }
 
     // La toolbar suit _selCard. On la montre / cache via selectCard / clearSelection.
@@ -3761,6 +3794,17 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     window.visualViewport.addEventListener('resize', () => {
       if (document.querySelector('#decomposeModal.open') && document.activeElement === ta) {
         ta.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    });
+  })();
+
+  // ── MOBILE : scroll vers la note éditée quand le clavier s'ouvre ──
+  (() => {
+    if (!window.visualViewport) return;
+    window.visualViewport.addEventListener('resize', () => {
+      const active = document.activeElement;
+      if (active && active.classList.contains('card-notes') && active.classList.contains('open')) {
+        active.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       }
     });
   })();
