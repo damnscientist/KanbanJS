@@ -1721,19 +1721,19 @@ const DnD = (() => {
     const board = document.getElementById('board');
     const br = board.getBoundingClientRect();
 
-    // Horizontal : scroll du board
+    // Horizontal : scroll du board (scrollBy + behavior:auto évite le snap)
     const dl = (_edgeX - br.left) / EDGE;
     const dr = (br.right - _edgeX) / EDGE;
-    if (dl < 1) board.scrollLeft -= Math.round((1 - dl) * SPEED_MAX);
-    if (dr < 1) board.scrollLeft += Math.round((1 - dr) * SPEED_MAX);
+    if (dl < 1) board.scrollBy({ left: -Math.round((1 - dl) * SPEED_MAX), behavior: 'auto' });
+    if (dr < 1) board.scrollBy({ left:  Math.round((1 - dr) * SPEED_MAX), behavior: 'auto' });
 
     // Vertical : scroll du .cards de la liste survolée
     if (lastPos && lastPos.container) {
       const cr = lastPos.container.getBoundingClientRect();
       const dt = (_edgeY - cr.top) / EDGE;
       const db = (cr.bottom - _edgeY) / EDGE;
-      if (dt < 1) lastPos.container.scrollTop -= Math.round((1 - dt) * SPEED_MAX);
-      if (db < 1) lastPos.container.scrollTop += Math.round((1 - db) * SPEED_MAX);
+      if (dt < 1) lastPos.container.scrollBy({ top: -Math.round((1 - dt) * SPEED_MAX), behavior: 'auto' });
+      if (db < 1) lastPos.container.scrollBy({ top:  Math.round((1 - db) * SPEED_MAX), behavior: 'auto' });
     }
 
     // Recaler le placeholder sous le doigt après le scroll
@@ -1753,6 +1753,8 @@ const DnD = (() => {
     }
     if (nearH || nearV) {
       if (!_scrollRaf) {
+        const board = document.getElementById('board');
+        board.style.scrollSnapType = 'none'; // désactiver snap pendant l'edge-scroll
         _scrollRaf = requestAnimationFrame(function loop() {
           tickScroll();
           _scrollRaf = requestAnimationFrame(loop);
@@ -1765,6 +1767,8 @@ const DnD = (() => {
 
   function cleanup() {
     if (_scrollRaf) { cancelAnimationFrame(_scrollRaf); _scrollRaf = null; }
+    const board = document.getElementById('board');
+    board.style.scrollSnapType = '';
     _touchDrag = false;
     if (dragEl && pointerId != null) {
       try { dragEl.releasePointerCapture(pointerId); } catch (_) {}
