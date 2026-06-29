@@ -170,6 +170,11 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - `createTemplateList(template)` : création atomique liste + cartes via `DB.batch()`.
 - CSS : bandeau `.template-banner` avec `color-mix(var(--accent) …)`, hover accent.
 
+### 2026-06-29 — Correctifs templates
+- **Bug — Double-clic bandeau template créait des listes dupliquées** : le handler de clic du `.template-banner` n'avait pas de guard anti-double-clic (contrairement au bouton de décomposition IA qui fait `btn.disabled = true`). Ajout d'une classe `.disabled` (`pointer-events: none`, `opacity: .5`) + `finally` pour réactiver.
+- **Bug — Aucune gestion d'erreur sur clic template** : si `createTemplateList` levait une exception (ex: quota localStorage), `close()` n'était jamais appelé, la modale restait ouverte sans feedback. Ajout d'un `try/catch` avec `flashMessage` sur le `statusEl`.
+- `open()` : reset défensif de la classe `disabled` à l'ouverture de la modale.
+
 ### 2026-06-29 — Robustesse undo/IA/paste
 - **Snapshot atomique sur paste carte** : `_paste()` wrappe `createCard` + `updateCardNotes` dans un seul `mutate()`. Avant, l'undo après un collage avec notes perdait les notes.
 - **Suppression de `location.reload()`** : undo, redo, reset et import reconstruisent le DOM via `_rebuild()` au lieu de recharger la page. Plus de flash visuel, scroll et sélection préservés.

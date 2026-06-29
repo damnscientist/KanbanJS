@@ -962,6 +962,11 @@
       background: color-mix(in srgb, var(--accent) 20%, transparent);
       border-color: var(--accent);
     }
+    .template-banner.disabled {
+      opacity: .5;
+      pointer-events: none;
+      cursor: default;
+    }
     .template-banner-icon { font-size: 16px; flex-shrink: 0; }
     .template-banner-text { flex: 1; }
 
@@ -2632,7 +2637,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       btn.disabled = false;
       statusEl.textContent = '';
       statusEl.className = 'cfg-status';
-      templateBanner.classList.remove('open');
+      templateBanner.classList.remove('open', 'disabled');
       templateBanner._template = null;
       input.focus();
     }
@@ -2656,9 +2661,16 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     const templateBanner = make('div', 'template-banner');
     templateBanner.innerHTML = '<span class="template-banner-icon">\uD83D\uDCA1</span><span class="template-banner-text"></span>';
     templateBanner.addEventListener('click', async () => {
-      if (templateBanner._template) {
-        await createTemplateList(templateBanner._template);
-        close();
+      if (templateBanner._template && !templateBanner.classList.contains('disabled')) {
+        templateBanner.classList.add('disabled');
+        try {
+          await createTemplateList(templateBanner._template);
+          close();
+        } catch (err) {
+          flashMessage(statusEl, err.message, 'error', 6000);
+        } finally {
+          templateBanner.classList.remove('disabled');
+        }
       }
     });
     modalBody.insertBefore(templateBanner, modalActions);
