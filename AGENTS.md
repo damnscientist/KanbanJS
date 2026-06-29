@@ -65,6 +65,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Parsing robuste de la réponse JSON (équilibrage des crochets, détection des guillemets)
 - Résultat : liste "Suggestions" créée en position 0 avec les cartes générées
 - Panneau de debug toggleable (logs requête/réponse/parsing)
+- **Templates** : 12 templates de corvées universelles intégrés, matching fuzzy sur le texte saisi dans le textarea (💡 "Template suggéré"). Zéro API requise.
 
 ### Persistance
 - `localStorage` avec 3 clés :
@@ -145,7 +146,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 ### P0 — Indispensable pour un usage partagé
 
 1. **Hébergement statique** — Déployer sur GitHub Pages / Netlify / Vercel. Le fichier ne fonctionne pas en `file://` (CORS bloque fetch). Sans ça, aucun non-technicien ne peut utiliser l'outil. Alternative : un script shell/batch qui lance un serveur local (`python -m http.server`).
-2. **Supprimer le mur de la clé API** — Demander à un utilisateur lambda de créer un compte OpenAI et coller une clé API est exactement la friction que l'outil est censé éliminer. Options : backend léger qui proxy les appels IA, intégration d'un modèle local (WebLLM / Ollama), ou mode dégradé avec templates de décomposition pré-faits (pas d'IA requise).
+2. **Supprimer le mur de la clé API** — Demander à un utilisateur lambda de créer un compte OpenAI et coller une clé API est exactement la friction que l'outil est censé éliminer. Options : backend léger qui proxy les appels IA, intégration d'un modèle local (WebLLM / Ollama), ou mode dégradé avec templates de décomposition pré-faits (pas d'IA requise). ✅ **Templates intégrés** — 12 corvées universelles avec matching fuzzy, zero API.
 3. **Onboarding** — La liste "Tuto" est un bon début mais ne montre pas pourquoi c'est différent d'un Trello. Ajouter une première décomposition guidée ("Essayez : ranger mon bureau") qui rend le concept tangible en 30 secondes.
 
 ### P1 — Utile au quotidien
@@ -161,6 +162,13 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 9. **Mode offline complet** — Service worker pour un fonctionnement 100% hors-ligne, cohérent avec la philosophie zéro-dépendance.
 
 ## Changelog
+
+### 2026-06-29 — Templates de décomposition
+- **12 templates intégrés** : corvées universelles (vaisselle, lessive, rangement, courrier, facture, mail, dossier, réunion, RDV médical, départ, boîte mail, fichiers bureau) avec micro-tâches pré-générées.
+- **Matching fuzzy** : au clavier dans le textarea de décomposition, détection automatique du template le plus proche et affichage d'un bandeau `💡 Template suggéré : X — Utiliser ce template`.
+- **Zero API** : les templates créent une liste nommée d'après le template en position 0, sans aucun appel réseau.
+- `createTemplateList(template)` : création atomique liste + cartes via `DB.batch()`.
+- CSS : bandeau `.template-banner` avec `color-mix(var(--accent) …)`, hover accent.
 
 ### 2026-06-29 — Robustesse undo/IA/paste
 - **Snapshot atomique sur paste carte** : `_paste()` wrappe `createCard` + `updateCardNotes` dans un seul `mutate()`. Avant, l'undo après un collage avec notes perdait les notes.

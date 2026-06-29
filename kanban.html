@@ -943,6 +943,28 @@
 
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ─── Template banner ────────────────────────────────────────── */
+    .template-banner {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text);
+      transition: background var(--transition), border-color var(--transition);
+    }
+    .template-banner.open { display: flex; }
+    .template-banner:hover {
+      background: color-mix(in srgb, var(--accent) 20%, transparent);
+      border-color: var(--accent);
+    }
+    .template-banner-icon { font-size: 16px; flex-shrink: 0; }
+    .template-banner-text { flex: 1; }
+
     /* ─── Decompose textarea ──────────────────────────────────────────────── */
     .field-textarea {
       background: var(--surface-2);
@@ -2346,6 +2368,21 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 {{TASK}}
 </tache>`;
 
+  const TEMPLATES = [
+    { name: 'Faire la vaisselle', tasks: ['Poser une éponge près de l\'évier','Ouvrir le robinet d\'eau chaude','Mettre du liquide vaisselle sur l\'éponge','Empiler les verres dans l\'évier','Laver les verres un par un','Rincer les verres un par un','Laver les assiettes une par une','Rincer les assiettes une par une','Poser la vaisselle propre sur l\'égouttoir','Vider les restes dans la poubelle','Rincer l\'évier','Ranger l\'éponge et essuyer les mains'] },
+    { name: 'Lancer une lessive', tasks: ['Prendre un panier ou un sac à linge','Ouvrir la machine à laver','Ramasser les vêtements sales visibles','Séparer le linge clair du linge foncé','Mettre une catégorie de linge dans le tambour','Ajouter la lessive dans le bac','Choisir un programme court ou habituel','Appuyer sur le bouton de démarrage','Jeter les étiquettes ou mouchoirs trouvés','Ranger la lessive et fermer la machine'] },
+    { name: 'Ranger une surface encombrée', tasks: ['Choisir une seule surface à vider','Poser un sac poubelle à côté','Poser une boîte ou un panier vide à côté','Jeter les déchets visibles','Mettre les objets à garder dans la boîte','Replacer les objets utiles à leur place','Essuyer la surface avec un chiffon','Vider la boîte dans les bons endroits','Jeter le sac poubelle','Ranger le chiffon et quitter la pièce'] },
+    { name: 'Trier le courrier', tasks: ['Poser tout le courrier sur une table','Prendre une enveloppe dans la pile','Ouvrir une enveloppe','Jeter l\'enveloppe vide','Créer trois piles : urgent, à garder, à jeter','Poser chaque document dans une pile','Mettre les papiers à garder dans une chemise','Prendre en photo un document si besoin','Mettre les papiers à jeter dans la poubelle papier','Fermer la chemise et libérer la table'] },
+    { name: 'Payer une facture', tasks: ['Poser la facture devant soi','Ouvrir l\'application bancaire ou le site','Se connecter au compte','Chercher le bouton de virement ou paiement','Saisir le montant indiqué sur la facture','Saisir le référent','Vérifier le nom du destinataire','Valider le paiement','Télécharger ou capturer la confirmation','Archiver la facture dans un dossier','Fermer l\'application et ranger le papier'] },
+    { name: 'Répondre à un mail important', tasks: ['Ouvrir la boîte mail','Ouvrir le message à traiter','Cliquer sur répondre','Écrire une phrase d\'ouverture simple','Répondre à la première question en une phrase','Répondre à la deuxième question en une phrase','Ajouter la pièce jointe demandée si nécessaire','Relire l\'objet et le destinataire','Cliquer sur envoyer','Archiver le fil ou le marquer traité'] },
+    { name: 'Démarrer un dossier bloquant', tasks: ['Ouvrir l\'ordinateur','Ouvrir le document ou le dossier concerné','Créer un document vide si rien n\'existe','Écrire le titre du sujet en haut','Créer trois sous-titres simples','Coller les liens ou sources déjà trouvés','Écrire une phrase sous un sous-titre','Renommer le fichier clairement','Enregistrer le document','Fermer les onglets inutiles','Noter le prochain mini-pas dans le document','Fermer le dossier de travail'] },
+    { name: 'Préparer une réunion courte', tasks: ['Ouvrir le calendrier','Ouvrir l\'invitation ou le lien de réunion','Créer une note vide','Écrire le titre de la réunion','Lister trois points à aborder','Copier un chiffre, lien ou fichier utile dans la note','Ouvrir le document à partager si besoin','Tester le micro ou les écouteurs','Fermer les fenêtres non liées à la réunion','Enregistrer la note et laisser le lien prêt'] },
+    { name: 'Prendre un rendez-vous médical', tasks: ['Prendre la carte vitale ou les informations utiles','Ouvrir l\'application ou le site de prise de rendez-vous','Chercher le nom du praticien ou la spécialité','Choisir un créneau disponible','Saisir le motif demandé en quelques mots','Valider le rendez-vous','Ajouter le rendez-vous au calendrier','Prendre une capture ou noter l\'adresse','Fermer l\'application','Ranger la carte et le papier'] },
+    { name: 'Préparer le départ demain', tasks: ['Poser un sac ouvert sur une chaise','Ouvrir le calendrier de demain','Poser les clés dans le sac','Poser le portefeuille dans le sac','Poser le chargeur ou les écouteurs dans le sac','Choisir les vêtements de demain','Poser les vêtements sur une surface visible','Remplir une gourde si utile','Mettre le sac près de la porte','Éteindre la lumière et quitter la zone'] },
+    { name: 'Vider sa boîte mail', tasks: ['Ouvrir la boîte de réception','Créer ou repérer le dossier À traiter','Ouvrir le premier mail non lu','Supprimer un mail publicitaire','Archiver un mail informatif','Déplacer un mail demandant une action vers À traiter','Se désabonner d\'une newsletter inutile','Répéter sur cinq mails maximum','Vider la corbeille des mails si besoin','Fermer l\'onglet de messagerie'] },
+    { name: 'Trier les fichiers du bureau', tasks: ['Allumer l\'ordinateur','Ouvrir le bureau ou le dossier à trier','Créer un dossier nommé À classer','Sélectionner cinq fichiers visibles','Déplacer les fichiers mélangés dans À classer','Renommer un fichier avec un nom clair','Créer un dossier utile si nécessaire','Déplacer un fichier dans son dossier final','Supprimer un doublon évident','Vider la corbeille si elle contient seulement des fichiers inutiles','Fermer les fenêtres ouvertes','Noter la date du prochain tri si besoin'] },
+  ];
+
   function parseAITasks(raw) {
     function accept(arr) {
       if (!Array.isArray(arr)) return null;
@@ -2546,6 +2583,19 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     await refreshHeaderInfo();
   }
 
+  async function createTemplateList(template) {
+    const list = await mutate(() => DB.batch(async () => {
+      const l = await DB.createList(template.name);
+      await DB.reorderList(l.id, 0);
+      await Promise.all(template.tasks.map(t => DB.createCard(l.id, t)));
+      return l;
+    }));
+    const cards = await DB.getCards(list.id);
+    const listEl = buildList(list, cards);
+    boardEl.insertBefore(listEl, boardEl.firstChild);
+    await refreshHeaderInfo();
+  }
+
   // ── Decompose modal / FAB ──────────────────────────────────
   (() => {
     const fab         = document.getElementById('decomposeFab');
@@ -2582,6 +2632,8 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       btn.disabled = false;
       statusEl.textContent = '';
       statusEl.className = 'cfg-status';
+      templateBanner.classList.remove('open');
+      templateBanner._template = null;
       input.focus();
     }
 
@@ -2598,6 +2650,44 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     fab.addEventListener('click', open);
     document.getElementById('decomposeModalClose').addEventListener('click', close);
     registerOverlay(overlay, close);
+
+    const modalBody = overlay.querySelector('.modal-body');
+    const modalActions = overlay.querySelector('.modal-actions');
+    const templateBanner = make('div', 'template-banner');
+    templateBanner.innerHTML = '<span class="template-banner-icon">\uD83D\uDCA1</span><span class="template-banner-text"></span>';
+    templateBanner.addEventListener('click', async () => {
+      if (templateBanner._template) {
+        await createTemplateList(templateBanner._template);
+        close();
+      }
+    });
+    modalBody.insertBefore(templateBanner, modalActions);
+
+    function fuzzyMatch(text, query) {
+      const t = text.toLowerCase();
+      const q = query.toLowerCase();
+      let qi = 0;
+      for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+        if (t[ti] === q[qi]) qi++;
+      }
+      return qi === q.length;
+    }
+
+    input.addEventListener('input', () => {
+      const query = input.value.trim();
+      templateBanner.classList.remove('open');
+      templateBanner._template = null;
+      if (!query || query.length < 4) return;
+      for (const t of TEMPLATES) {
+        if (fuzzyMatch(t.name, query)) {
+          templateBanner.querySelector('.template-banner-text').textContent =
+            'Template sugg\u00E9r\u00E9 : ' + t.name + ' \u2014 Utiliser ce template';
+          templateBanner.classList.add('open');
+          templateBanner._template = t;
+          return;
+        }
+      }
+    });
 
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); btn.click(); }
