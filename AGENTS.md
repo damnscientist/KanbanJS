@@ -1,6 +1,6 @@
 # KanbanJS — Projet anti-procrastination
 
-Fichier unique `kanban.html` (~3100 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
+Fichier unique `kanban.html` (~3200 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
 
 ## Concept
 
@@ -18,7 +18,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Header info : nombre de listes et cartes
 - Thème jour/nuit persisté dans 3 clés (`kanbanjs:theme-mode`, `kanbanjs:theme-dark`, `kanbanjs:theme-light`)
 - Sélecteur de thème dans la modale Configuration (onglet "Thèmes") : 4 sombres, 4 clairs
-- Bouton reset (purge `kanbanjs:state`, rechargement)
+- Bouton reset (purge `kanbanjs:state`, reconstruction DOM)
 - Export / Import JSON du board (boutons ↓ ↑ dans le header)
 - Indicateur de progression : barre + pourcentage dans le header (`3/8`, `38%`)
 
@@ -162,6 +162,12 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 
 ## Changelog
 
+### 2026-06-29 — Robustesse undo/IA/paste
+- **Snapshot atomique sur paste carte** : `_paste()` wrappe `createCard` + `updateCardNotes` dans un seul `mutate()`. Avant, l'undo après un collage avec notes perdait les notes.
+- **Suppression de `location.reload()`** : undo, redo, reset et import reconstruisent le DOM via `_rebuild()` au lieu de recharger la page. Plus de flash visuel, scroll et sélection préservés.
+- **`max_tokens` explicite** : ajout de `max_tokens: 2048` pour OpenAI et `maxOutputTokens: 2048` pour Google Gemini. Anthropic avait déjà `max_tokens: 4096`. Évite les troncatures de réponse JSON sur les petits modèles.
+- Extraction de `_rebuild()` : la reconstruction DOM (board name, listes, cartes, widget, FAB badge) est extraite de `init()` et réutilisée par undo/redo/reset/import.
+
 ### 2026-06-21 — Bugs finaux
 - **Bug 1 — `getAfter` cartes recevait `x` au lieu de `y`** : le moteur DnD appelle `cfg.getAfter(container, x, y, ghostEl)` mais le callback carte déclarait `(container, y)`, donc `y` recevait la valeur de `x`. Corrigé en `(container, x, y)`.
 - **Bug 2 — Cache `_cardCache` jamais invalidé entre listes** : le cache des rects des cartes était construit pour une liste et réutilisé tel quel quand le drag survolait une autre liste. Corrigé en keyant le cache par container (`_cardCache._container`).
@@ -180,7 +186,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - **mutate helper** : `mutate(fn)` = `_snapshot()` + `fn()`. Remplace ~15 appels `_snapshot()` raw.
 - **Theme API** : `const Theme = window.__themeAPI` capturé au début de App.
 - **removeListDom(listId)** : fonction partagée pour retirer une liste du DOM par ID.
-- Undo/Redo via `DB.exportJSON()` / `DB.restoreJSON()`, reset via `DB.reset()`.
+- `_rebuild()` reconstruit tout le DOM à partir de l'état DB. Utilisée par undo, redo, reset, import et `init()`. Remplace tous les anciens `location.reload()`.
 
 ### 2026-06-21 — Qualité/DRY
 - `toggleForm(btn, form, input, open)` : helper pour le pattern open/close de formulaire.

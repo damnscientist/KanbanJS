@@ -1717,7 +1717,7 @@ const App = (() => {
     _saveStack(RK, redo);
     await DB.restoreJSON(undo.pop());
     _saveStack(UK, undo);
-    location.reload();
+    await _rebuild();
   }
 
   async function _redo() {
@@ -1728,7 +1728,7 @@ const App = (() => {
     _saveStack(UK, undo);
     await DB.restoreJSON(redo.pop());
     _saveStack(RK, redo);
-    location.reload();
+    await _rebuild();
   }
 
   function _undoSize() { return _loadStack(UK).length; }
@@ -1993,7 +1993,9 @@ const App = (() => {
       const card   = await mutate(() => DB.createCard(list.id, text));
       const cardEl = buildCard(card, list.done);
       cardsEl.appendChild(cardEl);
-      closeCardForm();
+      newCardTA.value = '';
+      newCardTA.style.height = '';
+      newCardTA.focus();
       await refreshCountBadge(list.id);
       await refreshHeaderInfo();
       cardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -2215,7 +2217,7 @@ const App = (() => {
   document.getElementById('resetBtn').addEventListener('click', async () => {
     if (confirm('Remettre le board à zéro ? Toutes les données seront perdues.')) {
       await DB.reset();
-      location.reload();
+      await _rebuild();
     }
   });
 
@@ -2261,7 +2263,7 @@ const App = (() => {
             }
             return;
           }
-          location.reload();
+          await _rebuild();
         } catch (_) {
           alert('Fichier JSON invalide.');
         } finally {
@@ -2409,6 +2411,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
           { role: 'user', content: 'Décompose cette tâche en micro-actions. Réponds uniquement avec le tableau JSON.' },
         ],
         temperature: 0.3,
+        max_tokens: 2048,
       });
     } else if (provider === 'anthropic') {
       url = cfg.endpoint || 'https://api.anthropic.com/v1/messages';
@@ -2429,7 +2432,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       headers = { 'Content-Type': 'application/json' };
       body = JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3 },
+        generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
       });
     } else {
       throw new Error('Fournisseur inconnu : ' + provider);
@@ -2742,8 +2745,11 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       if (!_selList || !_selList.isConnected) return;
       const listId = _selList.dataset.id;
       const done   = _selList.dataset.done === 'true';
-      const card   = await mutate(() => DB.createCard(listId, data.text));
-      if (data.notes) await DB.updateCardNotes(card.id, data.notes);
+      const card   = await mutate(async () => {
+        const c = await DB.createCard(listId, data.text);
+        if (data.notes) await DB.updateCardNotes(c.id, data.notes);
+        return c;
+      });
       const cardsEl = _selList.querySelector('.cards');
       const cardEl  = buildCard(card, done);
       cardsEl.appendChild(cardEl);
@@ -3101,35 +3107,45 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     }, true);
   })();
 
+  // ── REBUILD ────────────────────────────────────────────────
+  async function _rebuild() {
+    const boardData = await DB.getBoard();
+    boardNameInput.value = boardData.name;
+    document.title = `KanbanJS \u00b7 ${boardData.name}`;
+
+    boardEl.innerHTML = '';
+    clearSelection();
+
+    const lists = await DB.getLists();
+    const allCards = await DB.getAllCards();
+    for (const l of lists) {
+      const listEl = buildList(l, allCards.filter(c => c.listId === l.id));
+      boardEl.appendChild(listEl);
+    }
+
+    buildAddListWidget();
+    await refreshHeaderInfo();
+
+    const cfg = readAIConfig();
+    const fab  = document.getElementById('decomposeFab');
+    if (!cfg || !cfg.apiKey || !cfg.model) {
+      fab.classList.add('fab-no-api');
+      fab.textContent = '!';
+      fab.title = 'API non configurée — Cliquez sur ⚙';
+    } else {
+      fab.classList.remove('fab-no-api');
+      fab.textContent = '+';
+      fab.title = 'Décomposer une tâche (IA)';
+    }
+  }
+
   // ── INIT ──────────────────────────────────────────────────
   async function init() {
     try {
-      const boardData = await DB.getBoard();
-      boardNameInput.value = boardData.name;
-      document.title = `KanbanJS \u00b7 ${boardData.name}`;
-
-      const lists = await DB.getLists();
-      const allCards = await DB.getAllCards();
-      for (const l of lists) {
-        const listEl = buildList(l, allCards.filter(c => c.listId === l.id));
-        boardEl.appendChild(listEl);
-        await refreshCountBadge(l.id);
-      }
-
-      buildAddListWidget();
-      await refreshHeaderInfo();
-
+      await _rebuild();
       document.getElementById('helpBtn').addEventListener('click', () => {
         document.querySelector('.cheatsheet-overlay').classList.toggle('open');
       });
-
-      const cfg = readAIConfig();
-      const fab  = document.getElementById('decomposeFab');
-      if (!cfg || !cfg.apiKey || !cfg.model) {
-        fab.classList.add('fab-no-api');
-        fab.textContent = '!';
-        fab.title = 'API non configurée — Cliquez sur ⚙';
-      }
     } catch (err) {
       console.error('KanbanJS init error:', err);
       boardEl.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-muted)">
@@ -3138,7 +3154,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       </div>`;
       document.getElementById('recoverBtn').addEventListener('click', async () => {
         await DB.reset();
-        location.reload();
+        await _rebuild();
       });
     }
   }
