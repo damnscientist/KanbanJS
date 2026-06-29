@@ -1,6 +1,6 @@
 # KanbanJS — Projet anti-procrastination
 
-Fichier unique `kanban.html` (~3200 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
+Fichier unique `kanban.html` (~3830 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
 
 ## Concept
 
@@ -55,6 +55,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Suppression
 - Drag & drop souris et tactile entre listes (ou au sein de la même liste)
 - Drag ghost + placeholder visuel
+- **Mobile** : boutons d'action (✎ ≡ ✕) toujours visibles sur mobile (pas de hover requis)
 
 ### IA (Décomposition)
 - FAB flottant `＋` en bas à droite (passe en `!` rouge si l'API n'est pas configurée)
@@ -90,6 +91,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 ### Mécanique DnD
 - `pointerdown`/`pointermove`/`pointerup` — API unifiée souris + tactile
 - Seuil 4px avant démarrage (évite les faux positifs)
+- **Touch : tap-long 320ms** — sur `pointerType === 'touch'`, le drag ne démarre qu'après 320ms de pression immobile. Si le doigt bouge de plus de 8px avant le délai, l'annulation laisse le scroll natif se produire. Souris et stylet restent immédiats.
 - Ghost : clone de l'élément ou `ghostBuilder` optionnel, fixed, `pointer-events:none`
 - `getZone(x,y)` : itère sur `getBoundingClientRect()` des cibles (pas de `elementFromPoint`)
 - Guard `lastPos` : mutation DOM uniquement si la position a changé
@@ -99,10 +101,13 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 
 ### Design
 - Dark/light mode via `data-theme` sur `<html>` + CSS custom properties
-- Modals : overlay `z-index: 20000`
-- FAB : `z-index: 5000`, `position: fixed` bottom-right
+- Modals : overlay `z-index: 20000` ; **bottom-sheet sur mobile** (`align-items: flex-end`, `border-radius` top-only, `max-height: 90dvh`)
+- FAB : `z-index: 5000`, `position: fixed` bottom-right ; `safe-area-inset-bottom` sur mobile
+- Toolbar contextuelle mobile : `z-index: 8000`, `position: fixed` bottom, visible uniquement sur `≤640px` quand une carte est sélectionnée
+- Menu ⋯ header mobile : `z-index: 19000`, bottom-sheet regroupant les actions secondaires (config, reset, export, import, aide, thème)
 - 4 thèmes sombres (Warm Night, Deep Ocean, Forest, Tokyo Night) et 4 clairs (Soft Sand, Mint, Lavender, Tokyo Light)
 - Couleurs CSS : `color-mix(in srgb, var(--accent) X%, transparent)` + fallback `rgba(var(--accent-rgb), .X)` pour compatibilité
+- Responsive `≤640px` : `--list-width: 82vw`, `scroll-snap-type: x mandatory`, `overscroll-behavior-x: contain`, `max-height: calc(100dvh - 88px)` sur les listes
 
 ### Limites techniques
 - **Pas de déploiement** — fichier local, provoque des erreurs CORS si ouvert en `file://` (l'API fetch y est bloquée, à servir via un serveur local)
@@ -119,6 +124,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Les helpers `toggleForm`, `registerOverlay`, `formatDoneAt`, `extractCardData`, `extractListData`, `removeListDom` sont dans le scope App, juste après `removeListDom`.
 - Le thème est capturé au démarrage de App via `const Theme = window.__themeAPI`. Plus aucun accès à `window.__themeAPI` dans le code métier.
 - `Clipboard` est un objet (plus un `let _clipboard`), méthodes : `copyCard/cutCard/copyList/cutList/paste/clear/isEmpty/type`.
+- `isMobile()` : helper `() => window.matchMedia('(max-width: 640px)').matches` — utilisé par la toolbar contextuelle pour ne s'afficher que sur mobile.
 
 ### Architecture du code
 - L'ordre des modales et du debug suit le flow : config → décompose
@@ -132,6 +138,12 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Les cartes ont un champ `notes` (chaîne) persisté via `updateCardNotes`, éditable inline (textarea toggleable)
 - Les cartes ont un champ `doneAt` (ISO string ou null) stocké automatiquement quand glissées dans une liste "terminée"
 - `refreshHeaderInfo()` et `refreshCountBadge(id)` sont async, lisent les données via DB (pas le DOM)
+- **Éléments mobiles-only** (présents dans le DOM mais masqués sur desktop par CSS) :
+  - `#mobileToolbar` / `.mobile-toolbar` : toolbar contextuelle carte (Modifier/Notes/Terminer/Supprimer)
+  - `#headerMenuOverlay` / `.header-menu-overlay` : bottom-sheet menu ⋯ (config, thème, aide, export, import, reset)
+  - `#searchMobileBtn`, `#headerMenuBtn` : boutons header mobile (.header-menu-btn)
+- `MutationObserver` sur `#board` pour détecter `.card.card-selected:not(.editing)` → affiche/masque la toolbar mobile
+- Le bouton "Terminer" de la toolbar déplace la carte vers la première liste `data-done="true"` trouvée dans le board
 
 ### Convention de code
 - `make(tag, className)` pour créer des éléments
@@ -152,8 +164,8 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 ### P1 — Utile au quotidien
 
 4. **Persistance robuste** — localStorage est fragile (clear navigateur, changement de machine = perte totale). Options : sync fichier local, WebDAV, GitHub Gist, ou au minimum un rappel périodique "Pensez à exporter". L'export JSON existe mais il est manuel.
-5. **Feedback de progression** — La barre de progression existe mais il n'y a pas de gratification quand on termine une tâche. Un micro-feedback (animation, compteur de streak, "5 tâches terminées aujourd'hui") renforcerait la boucle motivationnelle — c'est central pour un outil anti-procrastination.
-6. **UX mobile** — Le responsive existe mais les raccourcis clavier (cœur de l'UX power-user) disparaissent sur mobile. Repenser le pattern mobile avec des gestes ou des boutons d'action rapide pour "ouvrir, décomposer, cocher".
+5. **Feedback de progression** — La barre de progression existe mais il n'y a pas de gratification quand on termine une tâche. Un micro-feedback (animation, compteur de streak, "5 tâches terminées aujourd'hui") renforcerait la boucle motivationnelle — c'est central pour un outil anti-procrastination. ✅ **Streak + pulse + compteur du jour** implémentés.
+6. **UX mobile** — Le responsive existe mais les raccourcis clavier (cœur de l'UX power-user) disparaissent sur mobile. Repenser le pattern mobile avec des gestes ou des boutons d'action rapide pour "ouvrir, décomposer, cocher". ✅ **Refonte mobile** : toolbar contextuelle, menu ⋯, DnD tap-long, scroll-snap, bottom-sheets.
 
 ### P2 — Nice to have
 
@@ -162,6 +174,22 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 9. **Mode offline complet** — Service worker pour un fonctionnement 100% hors-ligne, cohérent avec la philosophie zéro-dépendance.
 
 ## Changelog
+
+### 2026-06-29 — Refonte UX mobile
+- **Toolbar contextuelle mobile** : barre fixe en bas d'écran (`#mobileToolbar`, z-index 8000) avec 4 boutons (Modifier / Notes / Terminer / Supprimer). Apparaît au tap sur une carte via `MutationObserver` sur `.card.card-selected:not(.editing)`. Se masque automatiquement à l'entrée en mode édition, à la fermeture de sélection, ou au tap ailleurs.
+- **Menu ⋯ header mobile** : bottom-sheet (`#headerMenuOverlay`, z-index 19000) regroupant les 6 actions secondaires (Config IA, Thème, Aide, Export, Import, Reset). Les boutons desktop correspondants sont masqués via classe `.header-desktop-only`.
+- **Bouton recherche mobile** : icône 🔍 (`#searchMobileBtn`) dans le header, visible uniquement sur mobile, ouvre directement la search overlay.
+- **DnD tactile tap-long** : sur `pointerType === 'touch'`, le drag ne s'active qu'après 320ms de pression immobile. Si le doigt bouge de > 8px avant le délai, le scroll natif est libéré. Souris et stylet restent immédiats. Résout le conflit scroll horizontal / drag.
+- **Modales bottom-sheet** : sur mobile, toutes les `.modal-overlay` s'affichent en bas de l'écran (`align-items: flex-end`, `border-radius` top-only, `max-height: 90dvh`).
+- **Hauteur listes `dvh`** : `max-height: calc(100dvh - 88px)` sur mobile — tient compte du clavier virtuel sur iOS/Android.
+- **Layout board mobile** : `--list-width: 82vw`, `scroll-snap-type: x mandatory`, `overscroll-behavior-x: contain` — navigation liste par liste au swipe.
+- **Cibles tactiles 40×40px** : `.btn-icon` agrandit à 40×40px, `.card-actions .btn-icon` à 38×38px, `.btn` avec padding 10×16px sur mobile.
+- **Actions carte toujours visibles** : `.card-actions { display: flex !important; position: static }` sur mobile — fin du hover-only, boutons toujours accessibles au doigt.
+- **FAB** : `safe-area-inset-bottom`, padding compensatoire sur `.list-footer` (72px) pour éviter le recouvrement.
+- **Police cartes** : 15px (card-text), 13px (notes), 14px (list-title) sur mobile.
+- **`enterkeyhint="send"`** et **`inputmode="text"`** sur le textarea de décomposition. `visualViewport.resize` → `scrollIntoView` quand le clavier virtuel s'ouvre.
+- **`prefers-reduced-motion`** : animations non essentielles (fadeIn cartes/listes, pulse, slideUp) désactivées.
+- **Bugfixes post-refonte** : `_selCard` capturé avant `clearSelection()` dans `mtDone` ; MutationObserver ignore `.card.editing` ; stylet (`pen`) traité comme souris (pas de délai tap-long).
 
 ### 2026-06-29 — Templates de décomposition
 - **12 templates intégrés** : corvées universelles (vaisselle, lessive, rangement, courrier, facture, mail, dossier, réunion, RDV médical, départ, boîte mail, fichiers bureau) avec micro-tâches pré-générées.
