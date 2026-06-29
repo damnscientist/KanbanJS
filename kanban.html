@@ -3121,6 +3121,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     for (const l of lists) {
       const listEl = buildList(l, allCards.filter(c => c.listId === l.id));
       boardEl.appendChild(listEl);
+      await refreshCountBadge(l.id);
     }
 
     buildAddListWidget();
