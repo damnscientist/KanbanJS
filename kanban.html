@@ -1247,8 +1247,8 @@
     <span class="progress-pct" id="progressPct"></span>
     <span class="streak-badge" id="streakBadge"></span>
     <span class="spacer"></span>
-    <!-- Bouton recherche : visible uniquement sur mobile -->
-    <button class="btn-icon header-menu-btn" id="searchMobileBtn" title="Rechercher une carte" style="display:none">&#128269;</button>
+    <!-- Bouton recherche : visible uniquement sur mobile (géré par .header-menu-btn CSS) -->
+    <button class="btn-icon header-menu-btn" id="searchMobileBtn" title="Rechercher une carte">&#128269;</button>
     <button class="btn-icon" id="themeToggle" title="Changer le thème">&#9788;</button>
     <button class="btn-icon header-desktop-only" id="configBtn" title="Configuration API IA">&#9881;</button>
     <button class="btn-icon header-desktop-only" id="resetBtn" title="Remettre le board à zéro">&#8634;</button>
@@ -1256,8 +1256,8 @@
     <button class="btn-icon header-desktop-only" id="exportBtn" title="Exporter le board (JSON)">&#8595;</button>
     <button class="btn-icon header-desktop-only" id="importBtn" title="Importer un board (JSON)">&#8593;</button>
     <input type="file" id="importFile" accept=".json,application/json" style="display:none" />
-    <!-- Bouton menu ⋯ mobile -->
-    <button class="btn-icon header-menu-btn" id="headerMenuBtn" title="Menu" style="display:none">&#8943;</button>
+    <!-- Bouton menu ⋯ mobile (géré par .header-menu-btn CSS) -->
+    <button class="btn-icon header-menu-btn" id="headerMenuBtn" title="Menu">&#8943;</button>
     <span class="header-info" id="headerInfo"></span>
   </header>
 
@@ -1808,6 +1808,7 @@ const DnD = (() => {
       if (options.skip && options.skip(dragElement)) return;
       if (dragEl) cleanup();
 
+      // 'touch' uniquement — 'pen' et 'mouse' ont un comportement immédiat
       const isTouch = e.pointerType === 'touch';
 
       // Sur touch : on autorise d'abord le scroll natif (touch-action par défaut).
@@ -3661,7 +3662,8 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     // On monkey-patch les fonctions existantes après leur définition.
     // On utilise un MutationObserver pour observer .card-selected.
     const obs = new MutationObserver(() => {
-      const sel = document.querySelector('.card.card-selected');
+      // Ne montrer la toolbar que si la carte sélectionnée n'est pas en mode édition
+      const sel = document.querySelector('.card.card-selected:not(.editing)');
       if (sel) showToolbar(); else hideToolbar();
     });
     obs.observe(document.getElementById('board'), {
@@ -3701,11 +3703,13 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     // ─ Bouton Terminer ─
     mtDone.addEventListener('click', async () => {
       if (!_selCard) return;
+      const card = _selCard; // capturer avant clearSelection qui met _selCard à null
+
       // Trouver la première liste marquée done:true dans le board
       const doneList = [...boardEl.querySelectorAll('.list')].find(l => l.dataset.done === 'true');
       if (!doneList) {
         // Aucune liste "terminée" : on bascule le statut visuel de la carte sans déplacer
-        const listEl = _selCard.closest('.list');
+        const listEl = card.closest('.list');
         if (listEl) {
           const doneBtn = listEl.querySelector('.btn-icon[title*="termin"]');
           if (doneBtn) { doneBtn.click(); hideToolbar(); }
@@ -3713,22 +3717,21 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
         return;
       }
       // Déplacer la carte vers la liste Done
-      const cardId    = _selCard.dataset.id;
+      const cardId    = card.dataset.id;
       const toListId  = doneList.dataset.id;
       const cardsEl   = doneList.querySelector('.cards');
-      const cards     = [...cardsEl.querySelectorAll('.card')];
-      const newPos    = cards.length;
-      const sourceListId = _selCard.dataset.listId;
+      const newPos    = cardsEl.querySelectorAll('.card').length;
+      const sourceListId = card.dataset.listId;
 
       await mutate(() => DB.moveCard(cardId, toListId, newPos));
 
       // Mettre à jour le DOM : déplacer l'élément carte
-      _selCard.dataset.listId = toListId;
-      cardsEl.appendChild(_selCard);
-      _selCard.classList.add('card-done');
+      card.dataset.listId = toListId;
+      cardsEl.appendChild(card);
+      card.classList.add('card-done');
       const now = new Date().toISOString();
       await DB.setCardDoneAt(cardId, now);
-      const atEl = _selCard.querySelector('.card-done-at');
+      const atEl = card.querySelector('.card-done-at');
       if (atEl) atEl.textContent = formatDoneAt(now);
 
       updateStreak();
@@ -3739,7 +3742,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
       hideToolbar();
       clearSelection();
-      _selCard && _selCard.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     });
 
     // ─ Bouton Supprimer ─
