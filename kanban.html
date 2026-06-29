@@ -962,6 +962,11 @@
       background: color-mix(in srgb, var(--accent) 20%, transparent);
       border-color: var(--accent);
     }
+    .template-banner:focus-visible {
+      background: color-mix(in srgb, var(--accent) 20%, transparent);
+      border-color: var(--accent);
+      outline-offset: -1px;
+    }
     .template-banner.disabled {
       opacity: .5;
       pointer-events: none;
@@ -2638,6 +2643,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       statusEl.textContent = '';
       statusEl.className = 'cfg-status';
       templateBanner.classList.remove('open', 'disabled');
+      templateBanner.removeAttribute('tabindex');
       templateBanner._template = null;
       input.focus();
     }
@@ -2673,6 +2679,12 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
         }
       }
     });
+    templateBanner.addEventListener('keydown', e => {
+      if ((e.key === 'Enter' || e.key === ' ') && templateBanner._template) {
+        e.preventDefault();
+        templateBanner.click();
+      }
+    });
     modalBody.insertBefore(templateBanner, modalActions);
 
     function fuzzyMatch(text, query) {
@@ -2688,6 +2700,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     input.addEventListener('input', () => {
       const query = input.value.trim();
       templateBanner.classList.remove('open');
+      templateBanner.removeAttribute('tabindex');
       templateBanner._template = null;
       if (!query || query.length < 4) return;
       for (const t of TEMPLATES) {
@@ -2695,6 +2708,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
           templateBanner.querySelector('.template-banner-text').textContent =
             'Template sugg\u00E9r\u00E9 : ' + t.name + ' \u2014 Utiliser ce template';
           templateBanner.classList.add('open');
+          templateBanner.setAttribute('tabindex', '0');
           templateBanner._template = t;
           return;
         }
@@ -2703,10 +2717,6 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); btn.click(); }
-      if (e.key === 'Tab' && templateBanner.classList.contains('open')) {
-        e.preventDefault();
-        templateBanner.click();
-      }
     });
 
     btn.addEventListener('click', async () => {

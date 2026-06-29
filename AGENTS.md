@@ -174,7 +174,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - **Bug — Double-clic bandeau template créait des listes dupliquées** : le handler de clic du `.template-banner` n'avait pas de guard anti-double-clic (contrairement au bouton de décomposition IA qui fait `btn.disabled = true`). Ajout d'une classe `.disabled` (`pointer-events: none`, `opacity: .5`) + `finally` pour réactiver.
 - **Bug — Aucune gestion d'erreur sur clic template** : si `createTemplateList` levait une exception (ex: quota localStorage), `close()` n'était jamais appelé, la modale restait ouverte sans feedback. Ajout d'un `try/catch` avec `flashMessage` sur le `statusEl`.
 - `open()` : reset défensif de la classe `disabled` à l'ouverture de la modale.
-- **Tab active le template** : dans le textarea de décomposition, `Tab` sur un template suggéré l'active directement (évite de tabber jusqu'au bouton "Décomposer" qui lancerait un appel IA). `Enter` garde son comportement IA.
+- **Tab active le template** : dans le textarea de décomposition, `Tab` focus le template suggéré (tabindex dynamique), `Enter`/`Space` l'active. Un 2e `Tab` amène au bouton "Décomposer" pour l'IA.
 
 ### 2026-06-29 — Robustesse undo/IA/paste
 - **Snapshot atomique sur paste carte** : `_paste()` wrappe `createCard` + `updateCardNotes` dans un seul `mutate()`. Avant, l'undo après un collage avec notes perdait les notes.
