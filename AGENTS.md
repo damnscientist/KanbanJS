@@ -176,6 +176,13 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - `open()` : reset défensif de la classe `disabled` à l'ouverture de la modale.
 - **Tab active le template** : dans le textarea de décomposition, `Tab` focus le template suggéré (tabindex dynamique), `Enter`/`Space` l'active. Un 2e `Tab` amène au bouton "Décomposer" pour l'IA.
 
+### 2026-06-29 — Feedback de progression (streak)
+- **Streak compteur** : `kanbanjs:streak` dans localStorage (`{ streak, lastDate, todayCount, todayDate }`). Incrémenté à chaque complétion (drag vers liste Done ou toggle liste terminée). Reset à 1 si un jour est sauté.
+- **Badge streak** : badge `🔥 N` dans le header, visible quand streak ≥ 2. État "paused" (opacité réduite) quand le jour en cours n'a pas encore de complétion, "actif" sinon.
+- **Compteur du jour** : `· X aujourd'hui` en couleur accent dans le header info.
+- **Animation pulse** : la barre de progression pulse (brightness) à chaque nouvelle complétion.
+- Survit au reset/import (clé séparée de `kanbanjs:state`), auto-correction naturelle en sautant un jour.
+
 ### 2026-06-29 — Robustesse undo/IA/paste
 - **Snapshot atomique sur paste carte** : `_paste()` wrappe `createCard` + `updateCardNotes` dans un seul `mutate()`. Avant, l'undo après un collage avec notes perdait les notes.
 - **Suppression de `location.reload()`** : undo, redo, reset et import reconstruisent le DOM via `_rebuild()` au lieu de recharger la page. Plus de flash visuel, scroll et sélection préservés.

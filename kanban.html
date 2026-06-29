@@ -254,6 +254,25 @@
       flex-shrink: 0;
     }
 
+    .streak-badge {
+      display: none;
+      font-size: 12px;
+      color: var(--text);
+      flex-shrink: 0;
+      cursor: default;
+    }
+    .streak-badge.show { display: inline; }
+    .streak-badge.paused { opacity: .4; }
+
+    @keyframes progressPulse {
+      0%   { filter: brightness(1); }
+      50%  { filter: brightness(2); }
+      100% { filter: brightness(1); }
+    }
+    .progress-fill.pulse { animation: progressPulse .6s ease; }
+
+    .today-count { color: var(--accent); }
+
     .header-info {
       font-size: 12px;
       color: var(--text-dim);
@@ -1048,6 +1067,7 @@
       <div class="progress-fill" id="progressFill"></div>
     </div>
     <span class="progress-pct" id="progressPct"></span>
+    <span class="streak-badge" id="streakBadge"></span>
     <span class="spacer"></span>
     <button class="btn-icon" id="themeToggle" title="Changer le thème">&#9788;</button>
     <button class="btn-icon" id="configBtn" title="Configuration API IA">&#9881;</button>
@@ -1633,13 +1653,67 @@ const App = (() => {
     const doneListIds = new Set(lists.filter(l => l.done).map(l => l.id));
     const total = allCards.length;
     const done  = allCards.filter(c => doneListIds.has(c.listId)).length;
-    headerInfoEl.textContent =
+    let infoHTML =
       `${lists.length} liste${lists.length !== 1 ? 's' : ''} \u00b7 ${done}/${total} carte${total !== 1 ? 's' : ''}`;
+
+    const s = readStreak();
+    const today = new Date().toISOString().slice(0, 10);
+    if (s.todayDate === today && s.todayCount > 0) {
+      infoHTML += ` \u00b7 <span class="today-count">${s.todayCount} aujourd\u2019hui</span>`;
+    }
+    headerInfoEl.innerHTML = infoHTML;
+
     const pct = total ? Math.round(done / total * 100) : 0;
     const fill = document.getElementById('progressFill');
     fill.style.width   = pct + '%';
     fill.style.opacity  = pct / 100;
     document.getElementById('progressPct').textContent = pct + '%';
+
+    const badge = document.getElementById('streakBadge');
+    if (s.streak >= 2) {
+      badge.textContent = '\uD83D\uDD25 ' + s.streak;
+      badge.title = s.streak + ' jours cons\u00e9cutifs avec au moins une t\u00e2che termin\u00e9e';
+      badge.classList.add('show');
+      if (s.lastDate !== today) badge.classList.add('paused');
+      else badge.classList.remove('paused');
+    } else {
+      badge.classList.remove('show', 'paused');
+    }
+  }
+
+  const STREAK_KEY = 'kanbanjs:streak';
+
+  function readStreak() {
+    try {
+      const raw = localStorage.getItem(STREAK_KEY);
+      return raw ? JSON.parse(raw) : { streak: 0, lastDate: null, todayCount: 0, todayDate: null };
+    } catch (_) { return { streak: 0, lastDate: null, todayCount: 0, todayDate: null }; }
+  }
+
+  function writeStreak(data) {
+    try { localStorage.setItem(STREAK_KEY, JSON.stringify(data)); } catch (_) {}
+  }
+
+  function updateStreak(increment = 1) {
+    const s = readStreak();
+    const today = new Date().toISOString().slice(0, 10);
+    if (s.todayDate !== today) {
+      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      s.streak = s.lastDate === yesterday ? s.streak + 1 : 1;
+      s.lastDate = today;
+      s.todayCount = increment;
+      s.todayDate = today;
+    } else {
+      s.todayCount += increment;
+    }
+    writeStreak(s);
+  }
+
+  function pulseProgress() {
+    const fill = document.getElementById('progressFill');
+    fill.classList.remove('pulse');
+    void fill.offsetWidth;
+    fill.classList.add('pulse');
   }
 
   async function refreshCountBadge(listId) {
@@ -1918,6 +1992,8 @@ const App = (() => {
       if (isDestDone && !wasDone) {
         const now = new Date().toISOString();
         await DB.setCardDoneAt(cardId, now);
+        updateStreak();
+        pulseProgress();
         const atEl = wrap.querySelector('.card-done-at');
         if (atEl) atEl.textContent = formatDoneAt(now);
       } else if (!isDestDone && wasDone) {
@@ -2052,6 +2128,10 @@ const App = (() => {
           if (atEl) atEl.textContent = '';
         }
       });
+      if (willBeDone && now) {
+        updateStreak(cardsEl.children.length);
+        pulseProgress();
+      }
       await refreshCountBadge(list.id);
       await refreshHeaderInfo();
     });
