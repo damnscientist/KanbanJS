@@ -804,6 +804,11 @@
     .fab.fab-no-api { background: var(--danger); opacity: 1; }
     .fab.fab-no-api:hover { background: var(--danger-hover); }
 
+    /* Éléments exclusivement mobiles — masqués par défaut (visibles via media query) */
+    .mobile-toolbar    { display: none; }
+    .header-menu-overlay { display: none; }
+    .header-menu-btn   { display: none; }
+
     /* Cheatsheet */
     .cheatsheet-overlay {
       display: none;
@@ -1042,19 +1047,192 @@
 
     /* ─── Responsive (écrans ≤ 640px) ──────────────────────────── */
     @media (max-width: 640px) {
+      /* — Header — */
       header {
         gap: 4px;
         padding: 0 8px;
+        overflow-x: visible; /* géré par menu ⋯, plus besoin du scroll invisible */
       }
       header h1 { display: none; }
       .header-info { display: none; }
-      .board-name { min-width: 0; max-width: 130px; padding: 4px 6px; font-size: 13px; }
-      header { overflow-x: auto; }
-      header .btn-icon { width: 26px; height: 26px; font-size: 15px; }
-      #board { padding: 10px; gap: 8px; --list-width: 260px; }
-      .fab { width: 44px; height: 44px; font-size: 18px; bottom: 14px; right: 14px; }
+      .streak-badge { display: none !important; } /* trop dense sur mobile */
+      .progress-bar { width: 70px; }
+      .board-name { min-width: 0; max-width: 120px; padding: 4px 6px; font-size: 13px; }
+
+      /* boutons header masqués sur mobile — remplacés par le menu ⋯ */
+      .header-desktop-only { display: none !important; }
+
+      /* bouton menu ⋯ visible uniquement sur mobile */
+      .header-menu-btn { display: flex !important; }
+
+      /* — Cibles tactiles globales — */
+      .btn-icon { width: 40px; height: 40px; font-size: 18px; }
+      header .btn-icon { width: 36px; height: 36px; font-size: 17px; }
+      .btn { padding: 10px 16px; font-size: 14px; }
+
+      /* — Board — */
+      #board {
+        padding: 10px;
+        gap: 8px;
+        --list-width: 82vw;          /* quasi plein écran, laisse un aperçu de la suivante */
+        scroll-snap-type: x mandatory;
+        overscroll-behavior-x: contain;
+      }
+      .list {
+        scroll-snap-align: start;
+        max-height: calc(100dvh - 88px); /* dvh = tient compte du clavier virtuel */
+      }
+
+      /* — Cartes : actions toujours visibles — */
+      .card-actions {
+        display: flex !important;    /* plus de hover-only */
+        position: static;
+        background: none;
+        padding: 4px 0 0;
+        margin-top: 2px;
+        border-top: 1px solid var(--border);
+        justify-content: flex-end;
+        gap: 4px;
+      }
+      .card-actions .btn-icon { width: 38px; height: 38px; font-size: 16px; }
+      /* on cache les card-actions quand la carte est en édition (déjà géré via .card.editing) */
+      .card.editing .card-actions { display: none !important; }
+
+      /* — Taille de police cartes — */
+      .card-text  { font-size: 15px; }
+      .card-notes { font-size: 13px; }
+      .list-title { font-size: 14px; }
+
+      /* — FAB — */
+      .fab {
+        width: 50px;
+        height: 50px;
+        font-size: 22px;
+        bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+        right: 16px;
+      }
+
+      /* — Padding bas des listes pour ne pas être caché par le FAB — */
+      .list-footer { padding-bottom: 72px; }
+
+      /* — Cheatsheet raccourcis (inutile sans clavier physique) — */
       .cheatsheet-shortcuts,
       .cheatsheet-intro { display: none; }
+
+      /* — Modale : bottom-sheet sur mobile — */
+      .modal-overlay {
+        align-items: flex-end;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+      }
+      .modal {
+        width: 100%;
+        max-width: 100%;
+        border-radius: var(--radius) var(--radius) 0 0;
+        max-height: 90dvh;
+      }
+
+      /* — Overlay recherche : descend un peu moins haut — */
+      .search-overlay { padding-top: 8vh; }
+      .search-box { max-width: 96vw; }
+
+      /* — Toolbar contextuelle mobile — */
+      .mobile-toolbar {
+        display: none;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+        background: var(--surface);
+        border-top: 2px solid var(--accent);
+        z-index: 8000;
+        gap: 8px;
+        animation: slideUp .15s ease;
+      }
+      .mobile-toolbar.open { display: flex; }
+      .mobile-toolbar .mt-btn {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        padding: 8px 4px;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        color: var(--text-muted);
+        font-family: inherit;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        min-height: 56px;
+        transition: background var(--transition), color var(--transition);
+      }
+      .mobile-toolbar .mt-btn:hover,
+      .mobile-toolbar .mt-btn:active { background: var(--surface-3); color: var(--text); }
+      .mobile-toolbar .mt-btn.danger { color: var(--danger); }
+      .mobile-toolbar .mt-btn.danger:hover { background: color-mix(in srgb, var(--danger) 15%, transparent); }
+      .mobile-toolbar .mt-btn.success { color: var(--accent); }
+      .mobile-toolbar .mt-btn.success:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+      .mobile-toolbar .mt-icon { font-size: 20px; line-height: 1; }
+
+      /* — Menu ⋯ bottom-sheet — */
+      .header-menu-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,.45);
+        z-index: 19000;
+        align-items: flex-end;
+      }
+      .header-menu-overlay.open { display: flex; }
+      .header-menu-sheet {
+        width: 100%;
+        background: var(--surface);
+        border-radius: var(--radius) var(--radius) 0 0;
+        padding: 8px 0 calc(12px + env(safe-area-inset-bottom, 0px));
+        animation: slideUp .15s ease;
+      }
+      .header-menu-sheet .sheet-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-muted);
+        padding: 8px 20px 12px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 4px;
+      }
+      .header-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        padding: 14px 20px;
+        background: none;
+        border: none;
+        color: var(--text);
+        font-family: inherit;
+        font-size: 15px;
+        cursor: pointer;
+        text-align: left;
+        transition: background var(--transition);
+      }
+      .header-menu-item:hover,
+      .header-menu-item:active { background: var(--surface-2); }
+      .header-menu-item.danger { color: var(--danger); }
+      .header-menu-item .mi-icon { font-size: 20px; width: 28px; text-align: center; flex-shrink: 0; }
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(100%); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+
+    /* prefers-reduced-motion : désactive les animations non essentielles */
+    @media (prefers-reduced-motion: reduce) {
+      .card, .list { animation: none; }
+      .progress-fill { transition: none; }
+      .fab { transition: none; }
+      .mobile-toolbar, .header-menu-sheet { animation: none; }
     }
   </style>
 </head>
@@ -1069,15 +1247,32 @@
     <span class="progress-pct" id="progressPct"></span>
     <span class="streak-badge" id="streakBadge"></span>
     <span class="spacer"></span>
+    <!-- Bouton recherche : visible uniquement sur mobile -->
+    <button class="btn-icon header-menu-btn" id="searchMobileBtn" title="Rechercher une carte" style="display:none">&#128269;</button>
     <button class="btn-icon" id="themeToggle" title="Changer le thème">&#9788;</button>
-    <button class="btn-icon" id="configBtn" title="Configuration API IA">&#9881;</button>
-    <button class="btn-icon" id="resetBtn" title="Remettre le board à zéro">&#8634;</button>
-    <button class="btn-icon" id="helpBtn" title="Raccourcis clavier">?</button>
-    <button class="btn-icon" id="exportBtn" title="Exporter le board (JSON)">&#8595;</button>
-    <button class="btn-icon" id="importBtn" title="Importer un board (JSON)">&#8593;</button>
+    <button class="btn-icon header-desktop-only" id="configBtn" title="Configuration API IA">&#9881;</button>
+    <button class="btn-icon header-desktop-only" id="resetBtn" title="Remettre le board à zéro">&#8634;</button>
+    <button class="btn-icon header-desktop-only" id="helpBtn" title="Raccourcis clavier">?</button>
+    <button class="btn-icon header-desktop-only" id="exportBtn" title="Exporter le board (JSON)">&#8595;</button>
+    <button class="btn-icon header-desktop-only" id="importBtn" title="Importer un board (JSON)">&#8593;</button>
     <input type="file" id="importFile" accept=".json,application/json" style="display:none" />
+    <!-- Bouton menu ⋯ mobile -->
+    <button class="btn-icon header-menu-btn" id="headerMenuBtn" title="Menu" style="display:none">&#8943;</button>
     <span class="header-info" id="headerInfo"></span>
   </header>
+
+  <!-- Bottom-sheet menu mobile -->
+  <div class="header-menu-overlay" id="headerMenuOverlay">
+    <div class="header-menu-sheet" id="headerMenuSheet">
+      <div class="sheet-title">Menu</div>
+      <button class="header-menu-item" id="menuConfigBtn"><span class="mi-icon">&#9881;</span>Configuration IA</button>
+      <button class="header-menu-item" id="menuThemeBtn"><span class="mi-icon">&#9788;</span>Changer le thème</button>
+      <button class="header-menu-item" id="menuHelpBtn"><span class="mi-icon">&#63;</span>Aide</button>
+      <button class="header-menu-item" id="menuExportBtn"><span class="mi-icon">&#8595;</span>Exporter (JSON)</button>
+      <button class="header-menu-item" id="menuImportBtn"><span class="mi-icon">&#8593;</span>Importer (JSON)</button>
+      <button class="header-menu-item danger" id="menuResetBtn"><span class="mi-icon">&#8634;</span>Réinitialiser</button>
+    </div>
+  </div>
   <div class="modal-overlay" id="configModal">
     <div class="modal">
       <div class="modal-header">
@@ -1155,7 +1350,8 @@
         <label class="field">
           <span class="field-label">Tâche à décomposer</span>
           <textarea id="decomposeInput" class="field-textarea" rows="3"
-                    placeholder="Rédiger mon rapport annuel…"></textarea>
+                    placeholder="Rédiger mon rapport annuel…"
+                    enterkeyhint="send" inputmode="text"></textarea>
         </label>
         <div class="modal-actions">
           <button class="btn btn-primary" id="decomposeBtn">Décomposer</button>
@@ -1170,6 +1366,15 @@
     </div>
   </div>
   <button class="fab" id="decomposeFab" title="Décomposer une tâche (IA)">+</button>
+
+  <!-- Toolbar contextuelle mobile — affichée au tap sur une carte -->
+  <div class="mobile-toolbar" id="mobileToolbar" role="toolbar" aria-label="Actions carte">
+    <button class="mt-btn" id="mtEdit"><span class="mt-icon">&#9998;</span>Modifier</button>
+    <button class="mt-btn" id="mtNotes"><span class="mt-icon">&#8801;</span>Notes</button>
+    <button class="mt-btn success" id="mtDone"><span class="mt-icon">&#10003;</span>Terminer</button>
+    <button class="mt-btn danger" id="mtDelete"><span class="mt-icon">&#10005;</span>Supprimer</button>
+  </div>
+
   <div id="board"></div>
 </div>
 
@@ -1602,24 +1807,94 @@ const DnD = (() => {
       if (e.target.closest('button, input, textarea, [data-no-drag]')) return;
       if (options.skip && options.skip(dragElement)) return;
       if (dragEl) cleanup();
-      e.preventDefault();
-      dragElement.setPointerCapture(e.pointerId);
 
-      const rect = dragElement.getBoundingClientRect();
-      offsetX = e.clientX - rect.left;
-      offsetY = e.clientY - rect.top;
-      startX  = e.clientX;
-      startY  = e.clientY;
-      dragEl  = dragElement;
-      dragId  = id;
-      dropCb  = onDrop;
-      cfg     = options;
-      started = false;
-      pointerId = e.pointerId;
+      const isTouch = e.pointerType === 'touch';
 
-      document.addEventListener('pointermove', onMove);
-      document.addEventListener('pointerup',   onUp);
-      document.addEventListener('pointercancel', onCancel);
+      // Sur touch : on autorise d'abord le scroll natif (touch-action par défaut).
+      // Le drag ne démarre qu'après un tap long de 300ms ou si le mouvement
+      // dépasse le seuil THRESHOLD sans avoir annulé (cf. onMove).
+      let longPressTimer = null;
+      let touchPending   = false;
+
+      function beginCapture() {
+        touchPending = false;
+        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+        e.preventDefault();
+        try { dragElement.setPointerCapture(e.pointerId); } catch (_) {}
+
+        const rect = dragElement.getBoundingClientRect();
+        offsetX = e.clientX - rect.left;
+        offsetY = e.clientY - rect.top;
+        startX  = e.clientX;
+        startY  = e.clientY;
+        dragEl  = dragElement;
+        dragId  = id;
+        dropCb  = onDrop;
+        cfg     = options;
+        started = false;
+        pointerId = e.pointerId;
+
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup',   onUp);
+        document.addEventListener('pointercancel', onCancel);
+      }
+
+      if (!isTouch) {
+        // Souris : comportement original immédiat
+        e.preventDefault();
+        dragElement.setPointerCapture(e.pointerId);
+
+        const rect = dragElement.getBoundingClientRect();
+        offsetX = e.clientX - rect.left;
+        offsetY = e.clientY - rect.top;
+        startX  = e.clientX;
+        startY  = e.clientY;
+        dragEl  = dragElement;
+        dragId  = id;
+        dropCb  = onDrop;
+        cfg     = options;
+        started = false;
+        pointerId = e.pointerId;
+
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup',   onUp);
+        document.addEventListener('pointercancel', onCancel);
+      } else {
+        // Touch : tap-long 320ms avant d'activer le drag
+        touchPending = true;
+        const startTX = e.clientX;
+        const startTY = e.clientY;
+
+        longPressTimer = setTimeout(() => {
+          longPressTimer = null;
+          if (touchPending) beginCapture();
+        }, 320);
+
+        // Si le doigt bouge significativement avant le délai → annuler le drag,
+        // laisser le scroll natif se produire
+        function onTouchMove(ev) {
+          if (!touchPending) return;
+          const dx = ev.clientX - startTX;
+          const dy = ev.clientY - startTY;
+          if (Math.hypot(dx, dy) > THRESHOLD * 2) {
+            touchPending = false;
+            if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+            document.removeEventListener('pointermove', onTouchMove);
+            document.removeEventListener('pointerup',   onTouchUp);
+            document.removeEventListener('pointercancel', onTouchUp);
+          }
+        }
+        function onTouchUp() {
+          touchPending = false;
+          if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+          document.removeEventListener('pointermove', onTouchMove);
+          document.removeEventListener('pointerup',   onTouchUp);
+          document.removeEventListener('pointercancel', onTouchUp);
+        }
+        document.addEventListener('pointermove', onTouchMove);
+        document.addEventListener('pointerup',   onTouchUp);
+        document.addEventListener('pointercancel', onTouchUp);
+      }
     });
   }
 
@@ -3303,6 +3578,190 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     }, true);
   })();
 
+  // ── MOBILE : détection touch ───────────────────────────────
+  const isMobile = () => window.matchMedia('(max-width: 640px)').matches;
+
+  // ── MOBILE : bouton recherche header ──────────────────────
+  (() => {
+    const btn = document.getElementById('searchMobileBtn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      // déclenche l'ouverture de la search overlay (définie dans le bloc Recherche)
+      const searchOverlay = document.querySelector('.search-overlay');
+      if (searchOverlay && !searchOverlay.classList.contains('open')) {
+        searchOverlay.classList.add('open');
+        const inp = searchOverlay.querySelector('.search-input');
+        if (inp) setTimeout(() => inp.focus(), 50);
+      }
+    });
+  })();
+
+  // ── MOBILE : menu ⋯ header ────────────────────────────────
+  (() => {
+    const menuBtn     = document.getElementById('headerMenuBtn');
+    const overlay     = document.getElementById('headerMenuOverlay');
+    const sheet       = document.getElementById('headerMenuSheet');
+    if (!menuBtn || !overlay) return;
+
+    function openMenu()  { overlay.classList.add('open'); }
+    function closeMenu() { overlay.classList.remove('open'); }
+
+    menuBtn.addEventListener('click', openMenu);
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeMenu(); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && overlay.classList.contains('open')) closeMenu();
+    });
+
+    // Délégation vers les boutons existants du header desktop
+    document.getElementById('menuConfigBtn').addEventListener('click', () => {
+      closeMenu();
+      document.getElementById('configBtn').click();
+    });
+    document.getElementById('menuThemeBtn').addEventListener('click', () => {
+      closeMenu();
+      document.getElementById('themeToggle').click();
+    });
+    document.getElementById('menuHelpBtn').addEventListener('click', () => {
+      closeMenu();
+      // Ouvrir la cheatsheet (même si raccourcis masqués, l'intro reste)
+      const cs = document.querySelector('.cheatsheet-overlay');
+      if (cs) cs.classList.toggle('open');
+    });
+    document.getElementById('menuExportBtn').addEventListener('click', () => {
+      closeMenu();
+      document.getElementById('exportBtn').click();
+    });
+    document.getElementById('menuImportBtn').addEventListener('click', () => {
+      closeMenu();
+      document.getElementById('importBtn').click();
+    });
+    document.getElementById('menuResetBtn').addEventListener('click', () => {
+      closeMenu();
+      document.getElementById('resetBtn').click();
+    });
+  })();
+
+  // ── MOBILE : toolbar contextuelle carte ───────────────────
+  (() => {
+    const toolbar  = document.getElementById('mobileToolbar');
+    if (!toolbar) return;
+    const mtEdit   = document.getElementById('mtEdit');
+    const mtNotes  = document.getElementById('mtNotes');
+    const mtDone   = document.getElementById('mtDone');
+    const mtDelete = document.getElementById('mtDelete');
+
+    function showToolbar() {
+      if (isMobile()) toolbar.classList.add('open');
+    }
+    function hideToolbar() {
+      toolbar.classList.remove('open');
+    }
+
+    // La toolbar suit _selCard. On la montre / cache via selectCard / clearSelection.
+    // On monkey-patch les fonctions existantes après leur définition.
+    // On utilise un MutationObserver pour observer .card-selected.
+    const obs = new MutationObserver(() => {
+      const sel = document.querySelector('.card.card-selected');
+      if (sel) showToolbar(); else hideToolbar();
+    });
+    obs.observe(document.getElementById('board'), {
+      subtree: true, attributeFilter: ['class'], attributes: true,
+    });
+
+    // Fermer la toolbar quand on tape ailleurs que sur une carte ou la toolbar
+    document.addEventListener('pointerdown', e => {
+      if (!toolbar.classList.contains('open')) return;
+      if (toolbar.contains(e.target)) return;
+      if (e.target.closest('.card')) return;
+      hideToolbar();
+      clearSelection();
+    }, { capture: true });
+
+    // Fermer toolbar quand une modale s'ouvre
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') hideToolbar();
+    });
+
+    // ─ Bouton Modifier ─
+    mtEdit.addEventListener('click', () => {
+      if (!_selCard) return;
+      const btn = _selCard.querySelector('.card-actions .btn-icon[title="Modifier"]');
+      if (btn) btn.click();
+      // La toolbar reste ouverte pendant l'édition — elle se masquera via editing class
+      // qui retire card-selected via saveEdit/exitEdit
+    });
+
+    // ─ Bouton Notes ─
+    mtNotes.addEventListener('click', () => {
+      if (!_selCard) return;
+      const btn = _selCard.querySelector('.card-actions .btn-icon[title="Notes"]');
+      if (btn) btn.click();
+    });
+
+    // ─ Bouton Terminer ─
+    mtDone.addEventListener('click', async () => {
+      if (!_selCard) return;
+      // Trouver la première liste marquée done:true dans le board
+      const doneList = [...boardEl.querySelectorAll('.list')].find(l => l.dataset.done === 'true');
+      if (!doneList) {
+        // Aucune liste "terminée" : on bascule le statut visuel de la carte sans déplacer
+        const listEl = _selCard.closest('.list');
+        if (listEl) {
+          const doneBtn = listEl.querySelector('.btn-icon[title*="termin"]');
+          if (doneBtn) { doneBtn.click(); hideToolbar(); }
+        }
+        return;
+      }
+      // Déplacer la carte vers la liste Done
+      const cardId    = _selCard.dataset.id;
+      const toListId  = doneList.dataset.id;
+      const cardsEl   = doneList.querySelector('.cards');
+      const cards     = [...cardsEl.querySelectorAll('.card')];
+      const newPos    = cards.length;
+      const sourceListId = _selCard.dataset.listId;
+
+      await mutate(() => DB.moveCard(cardId, toListId, newPos));
+
+      // Mettre à jour le DOM : déplacer l'élément carte
+      _selCard.dataset.listId = toListId;
+      cardsEl.appendChild(_selCard);
+      _selCard.classList.add('card-done');
+      const now = new Date().toISOString();
+      await DB.setCardDoneAt(cardId, now);
+      const atEl = _selCard.querySelector('.card-done-at');
+      if (atEl) atEl.textContent = formatDoneAt(now);
+
+      updateStreak();
+      pulseProgress();
+      if (sourceListId !== toListId) await refreshCountBadge(sourceListId);
+      await refreshCountBadge(toListId);
+      await refreshHeaderInfo();
+
+      hideToolbar();
+      clearSelection();
+      _selCard && _selCard.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+
+    // ─ Bouton Supprimer ─
+    mtDelete.addEventListener('click', async () => {
+      if (!_selCard) return;
+      const btn = _selCard.querySelector('.card-actions .btn-icon[title="Supprimer"]');
+      if (btn) { hideToolbar(); btn.click(); }
+    });
+  })();
+
+  // ── MOBILE : modale décomposition — scroll au clavier virtuel ──
+  (() => {
+    const ta = document.getElementById('decomposeInput');
+    if (!ta || !window.visualViewport) return;
+    // Sur mobile, scroll vers la textarea quand le clavier s'ouvre
+    window.visualViewport.addEventListener('resize', () => {
+      if (document.querySelector('#decomposeModal.open') && document.activeElement === ta) {
+        ta.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    });
+  })();
+
   // ── REBUILD ────────────────────────────────────────────────
   async function _rebuild() {
     const boardData = await DB.getBoard();
@@ -3340,6 +3799,8 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
   async function init() {
     try {
       await _rebuild();
+      // helpBtn est masqué sur mobile, mais le click est quand même branché
+      // (le menu ⋯ mobile fait son propre toggle indépendamment)
       document.getElementById('helpBtn').addEventListener('click', () => {
         document.querySelector('.cheatsheet-overlay').classList.toggle('open');
       });
