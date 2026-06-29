@@ -2703,6 +2703,10 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); btn.click(); }
+      if (e.key === 'Tab' && templateBanner.classList.contains('open')) {
+        e.preventDefault();
+        templateBanner.click();
+      }
     });
 
     btn.addEventListener('click', async () => {
