@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>KanbanJS — Tests</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:#1a1410;color:#e0d8d0;padding:40px;max-width:800px;margin:0 auto}
+  h1{font-size:20px;color:#e8a85a;margin-bottom:8px}
+  .sub{font-size:12px;color:#8a8278;margin-bottom:24px}
+  .test{padding:10px 14px;margin-bottom:6px;border-radius:6px;font-size:13px;font-family:'Cascadia Code','Fira Code',monospace}
+  .pass{background:#1a2e1a;color:#5ecf9a}
+  .fail{background:#2e1a1a;color:#e87a6a}
+  .fail .detail{display:block;color:#8a8278;font-size:11px;margin-top:4px}
+  .summary{padding:14px;margin-top:20px;border-radius:6px;font-size:14px;font-weight:600}
+  .summary.good{background:#1a2e1a;color:#5ecf9a}
+  .summary.bad{background:#2e1a1a;color:#e87a6a}
+  #status{font-size:12px;color:#8a8278;margin-bottom:12px}
+  iframe{display:none}
+</style>
+</head>
+<body>
+<h1>KanbanJS — Tests de non-régression</h1>
+<div class="sub">Ouvre kanban.html en iframe et teste les opérations DB + export/import.</div>
+<div id="status">Chargement de l'iframe…</div>
+<iframe id="frame" src="kanban.html"></iframe>
+<div id="results"></div>
+
+<script>
+const frame = document.getElementById('frame');
+const resultsEl = document.getElementById('results');
+const statusEl = document.getElementById('status');
+let pass = 0, fail = 0, pending = 0;
+
+function send(method, args = {}, timeout = 4000) {
+  pending++;
+  const msgId = crypto.randomUUID ? crypto.randomUUID() : 't' + Math.random().toString(36).slice(2);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pending--;
+      reject(new Error('Timeout (' + method + ')'));
+    }, timeout);
+    const handler = (e) => {
+      if (e.data && e.data.msgId === msgId) {
+        window.removeEventListener('message', handler);
+        clearTimeout(timer);
+        pending--;
+        if (e.data.error) reject(new Error(e.data.error));
+        else resolve(e.data.result);
+      }
+    };
+    window.addEventListener('message', handler);
+    frame.contentWindow.postMessage({ msgId, method, ...args }, '*');
+  });
+}
+
+function assert(label, condition, detail) {
+  const el = document.createElement('div');
+  if (condition) {
+    el.className = 'test pass';
+    el.textContent = '\u2713 ' + label;
+    pass++;
+  } else {
+    el.className = 'test fail';
+    el.textContent = '\u2717 ' + label;
+    if (detail) {
+      const d = document.createElement('span');
+      d.className = 'detail';
+      d.textContent = typeof detail === 'string' ? detail : JSON.stringify(detail);
+      el.appendChild(d);
+    }
+    fail++;
+  }
+  resultsEl.appendChild(el);
+}
+
+async function run() {
+  statusEl.textContent = 'Attente de l\'initialisation…';
+  await new Promise(r => setTimeout(r, 800));
+
+  statusEl.textContent = 'Exécution des tests…';
+
+  // Nettoyage localStorage avant les tests (depuis le scope parent qui partage l'origine)
+  // On ne peut pas accéder au localStorage de l'iframe directement, on utilise reset
+
+  // ── 0. Reset ────────────────────────────────────────────────
+  try {
+    await send('reset');
+    await send('rebuild');
+    await new Promise(r => setTimeout(r, 200));
+    assert('Reset — le board est restauré', true);
+  } catch (e) {
+    assert('Reset — le board est restauré', false, e.message);
+  }
+
+  // ── 1. Listes par défaut ────────────────────────────────────
+  try {
+    const lists = await send('getLists');
+    assert('6 listes après reset', lists.length === 6, 'trouvé : ' + lists.length);
+    assert('Liste "Tuto" en position 0', lists[0] && lists[0].title === 'Tuto', lists[0]?.title);
+    assert('Liste "Done" marquée terminée', lists.some(l => l.title === 'Done' && l.done), 'done=' + lists.find(l => l.title === 'Done')?.done);
+  } catch (e) {
+    assert('Listes par défaut', false, e.message);
+  }
+
+  // ── 2. Création de carte ────────────────────────────────────
+  let testCard;
+  try {
+    const lists = await send('getLists');
+    const backlog = lists.find(l => l.title === 'Backlog');
+    assert('Backlog trouvé', !!backlog);
+    if (backlog) {
+      testCard = await send('createCard', { listId: backlog.id, text: 'Carte de test' });
+      assert('Carte créée', !!testCard && testCard.text === 'Carte de test');
+      assert('Carte a un id', !!testCard && typeof testCard.id === 'string' && testCard.id.startsWith('_'));
+      assert('Carte a notes vide', testCard && testCard.notes === '');
+      assert('Carte a doneAt null', testCard && testCard.doneAt === null);
+    }
+  } catch (e) {
+    assert('Création de carte', false, e.message);
+  }
+
+  // ── 3. Création d'une liste ─────────────────────────────────
+  let testList;
+  try {
+    testList = await send('createList', { title: 'Liste de test' });
+    assert('Liste créée', !!testList && testList.title === 'Liste de test');
+    assert('Liste a un id', !!testList && typeof testList.id === 'string');
+    const lists = await send('getLists');
+    assert('7 listes après ajout', lists.length === 7, 'trouvé : ' + lists.length);
+  } catch (e) {
+    assert('Création de liste', false, e.message);
+  }
+
+  // ── 4. Suppression de carte ─────────────────────────────────
+  try {
+    if (testCard) {
+      await send('deleteCard', { id: testCard.id });
+      const cards = await send('getCards', { listId: testCard.listId });
+      assert('Carte supprimée', !cards.some(c => c.id === testCard.id));
+    } else {
+      assert('Carte supprimée', false, 'pas de carte à supprimer');
+    }
+  } catch (e) {
+    assert('Suppression de carte', false, e.message);
+  }
+
+  // ── 5. Suppression de liste ─────────────────────────────────
+  try {
+    if (testList) {
+      await send('deleteList', { id: testList.id });
+      const lists = await send('getLists');
+      assert('Liste supprimée', !lists.some(l => l.id === testList.id));
+      assert('Retour à 6 listes', lists.length === 6, 'trouvé : ' + lists.length);
+    }
+  } catch (e) {
+    assert('Suppression de liste', false, e.message);
+  }
+
+  // ── 6. Export / Import ──────────────────────────────────────
+  try {
+    const exported = await send('export');
+    const parsed = JSON.parse(exported);
+    assert('Export contient state', !!parsed.state);
+    assert('Export contient board', !!parsed.state.board);
+    assert('Export contient lists', Array.isArray(parsed.state.lists));
+    assert('Export contient cards', Array.isArray(parsed.state.cards));
+    assert('Export contient streak', 'streak' in parsed);
+
+    // Créer une carte pour différencier, puis importer l'ancien export
+    const lists = await send('getLists');
+    const backlog = lists.find(l => l.title === 'Backlog');
+    await send('createCard', { listId: backlog.id, text: 'Carte temporaire' });
+    let cards = await send('getBoardCards');
+    const countAfter = cards.length;
+
+    await send('import', { json: exported });
+    await send('rebuild');
+    await new Promise(r => setTimeout(r, 200));
+    cards = await send('getBoardCards');
+    assert('Import restaure le nombre de cartes', cards.length === countAfter - 1,
+      'avant import: ' + countAfter + ', après: ' + cards.length);
+  } catch (e) {
+    assert('Export / Import', false, e.message);
+  }
+
+  // ── 7. Streak ───────────────────────────────────────────────
+  try {
+    await send('setStreak', { streak: 5, lastDate: '2026-06-30', todayCount: 3, todayDate: '2026-06-30' });
+    const s = await send('getStreak');
+    assert('Streak écrit/lu', s.streak === 5 && s.lastDate === '2026-06-30');
+    assert('Streak todayCount', s.todayCount === 3);
+
+    await send('setStreak', { streak: 0, lastDate: null, todayCount: 0, todayDate: null });
+    const s2 = await send('getStreak');
+    assert('Streak reset', s2.streak === 0);
+  } catch (e) {
+    assert('Streak', false, e.message);
+  }
+
+  // ── 8. Board name ───────────────────────────────────────────
+  try {
+    const board = await send('getBoard');
+    assert('Board a un nom', !!board && board.name.length > 0);
+  } catch (e) {
+    assert('Board name', false, e.message);
+  }
+
+  // ── 9. Compteurs ────────────────────────────────────────────
+  try {
+    const cardCount = await send('cardCount');
+    const listCount = await send('listCount');
+    assert('cardCount > 0', cardCount > 0, 'trouvé : ' + cardCount);
+    assert('listCount = 6', listCount === 6, 'trouvé : ' + listCount);
+  } catch (e) {
+    assert('Compteurs', false, e.message);
+  }
+
+  // ── Résumé ──────────────────────────────────────────────────
+  const total = pass + fail;
+  const summary = document.createElement('div');
+  summary.className = 'summary ' + (fail === 0 ? 'good' : 'bad');
+  summary.textContent = fail === 0
+    ? '\u2713 ' + pass + '/' + total + ' tests réussis'
+    : '\u2717 ' + fail + '/' + total + ' échecs (' + pass + ' réussis)';
+  resultsEl.appendChild(summary);
+  statusEl.textContent = 'Terminé.';
+}
+
+frame.addEventListener('load', () => {
+  setTimeout(run, 100);
+});
+</script>
+</body>
+</html>

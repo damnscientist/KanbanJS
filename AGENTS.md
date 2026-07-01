@@ -1,6 +1,6 @@
 # KanbanJS — Projet anti-procrastination
 
-Fichier unique `kanban.html` (~3900 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
+Fichier unique `kanban.html` (~4200 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
 
 ## Concept
 
@@ -25,14 +25,14 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 ### Clavier
 - Raccourcis vim-like : minuscule = carte, majuscule = liste
 - Navigation : `h`/`l` listes ←/→, `j`/`k` cartes ↓/↑, `1-9` focus liste n
-- Actions carte : `n` créer (fallback Backlog si aucune liste sélectionnée), `r` renommer (dblclick), `e` ouvrir notes (cycle édition→preview→fermé), `c` dupliquer, `x` couper, `y` copier, `p` coller, `d` marquer terminée
+- Actions carte : `n` créer (fallback Backlog si aucune liste sélectionnée), `r` renommer (dblclick), `e` ouvrir notes (cycle édition→preview→fermé), `c` dupliquer, `t` ajouter un tag, `x` couper, `y` copier, `p` coller, `d` marquer terminée
 - Actions liste : `N` créer, `R` renommer, `D` toggle terminé, `C` replier/déplier, `X` couper, `Y` copier, `P` coller
 - `E` plier/déplier toutes les notes (preview), `Ctrl+drag` = copier une carte au lieu de déplacer
 - `Esc` désélectionne la carte/liste courante ou ferme l'overlay actif, `?` affiche l'aide clavier
 - Presse-papier unifié : couper/copier une liste copie titre + cartes
 - Sélection visuelle : bordure accent, actions toujours visibles sur carte sélectionnée
 - Ignore automatiquement quand un input/textarea a le focus ou une modale est ouverte
-- `Ctrl+K` : recherche fuzzy sur les cartes du board (texte, notes, titre de liste)
+- `Ctrl+K` : recherche fuzzy sur les cartes du board (texte, notes, tags, titre de liste)
 - `u` undo, `Ctrl+Y` redo : 30 niveaux de snapshots (session uniquement)
 
 ### Listes
@@ -52,19 +52,21 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 ### Cartes
 - Création inline ("Ajouter une carte" dans chaque liste)
 - Édition inline (textarea avec Sauver/Annuler, Enter valide, Escape annule)
-- **Notes** : chaque carte a un bouton `≡` qui ouvre une textarea de note personnelle en édition. Cycle 3 états : édition (≡, `e`) → preview markdown (Esc) → fermé (Esc ou ≡). Rendu basique (gras, italique, code inline). Pastille colorée sur les cartes ayant des notes.
+- **Notes** : chaque carte a un bouton `≡` qui ouvre une textarea de note personnelle en édition. Cycle 3 états : édition (≡, `e`) → preview markdown (Esc) → fermé (Esc ou ≡). Rendu markdown (gras, italique, code inline, liens, titres, listes, ligne horizontale). Pastille colorée sur les cartes ayant des notes.
 - Suppression
 - Drag & drop souris entre listes (ou au sein de la même liste)
 - Drag ghost + placeholder visuel
 
+- **Tags** : chaque carte a un champ `tags: []`, chips colorés (couleur par hash du nom), bouton `+ tag`, raccourci `t`, tags préservés au copier/coller/dupliquer, recherchables via `Ctrl+K`.
+
 ### IA (Décomposition)
-- FAB flottant `＋` en bas à droite (passe en `!` rouge si l'API n'est pas configurée)
-- Modal "Décomposer une tâche" avec textarea
+- FAB flottant `＋` en bas à droite
+- Modal "Décomposer une tâche" : si l'API est configurée → textarea + bouton Décomposer (IA) + suggestion template fuzzy. Si pas d'API → grille des 12 templates cliquables + lien vers la config.
 - **Abstraction fournisseur** : supporte OpenAI/compatible, Anthropic, Google Gemini (switch dans `queryAI`)
 - Appel POST à l'API avec format spécifique par fournisseur
 - Prompt système : décomposition en micro-actions anti-procrastination
-- Parsing robuste de la réponse JSON (équilibrage des crochets, détection des guillemets)
-- Résultat : liste "Suggestions" créée en position 0 avec les cartes générées
+- Parsing robuste de la réponse JSON (équilibrage des crochets, détection des guillemets, strip code fences)
+- Résultat : liste "IA" créée en position 0 avec les cartes générées
 - Panneau de debug toggleable (logs requête/réponse/parsing)
 - **Templates** : 12 templates de corvées universelles intégrés, matching fuzzy sur le texte saisi dans le textarea (💡 "Template suggéré"). Zéro API requise.
 
@@ -85,7 +87,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 | Module | Responsabilité | API publique |
 |---|---|---|
 | `initTheme` | IIFE, lit/applique/persiste le thème | lecture au load |
-| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, toggleCollapsed, getCards, getAllCards, createCard, updateCard, updateCardNotes, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard, exportJSON, importJSON, reset, restoreJSON, batch` |
+| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, toggleCollapsed, getCards, getAllCards, createCard, updateCard, updateCardNotes, updateCardTags, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard, exportJSON, importJSON, reset, restoreJSON, batch` |
 | `DnD` | Moteur de drag & drop générique | `start(dragEl, id, { ghostEl?, ghostClass?, phClass?, getZone, getAfter, getPos, skip? }, onDrop)` |
 | `App` | UI Kanban | `init()` boot la session |
 
@@ -127,11 +129,12 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Le prompt système est dans `PROMPT_SYSTEM` (template literal, substitution `{{TASK}}`)
 - La config API (provider, endpoint, apiKey, model) est stockée en localStorage, lue par `readAIConfig()` dans App
 - Le fournisseur est branché dans `queryAI` via un switch (`'openai'` / `'anthropic'` / `'google'`), chaque branche construit body + headers + parsing de réponse
-- Le board est initialisé avec 5 listes par défaut via `DB._default` (dont "Tuto" avec cartes-exemples)
+- Le board est initialisé avec 6 listes par défaut via `DB._default` (dont "Tuto" avec cartes-exemples et "Ranger une surface" avec micro-tâches d'onboarding)
 - `buildList(list, cards)` est synchrone — les cartes sont passées en paramètre (pré-fetchées par l'appelant)
 - `buildCard(card, done)` est synchrone (reçoit une carte déjà construite)
 - Les listes ont un champ `done` (booléen) ; si vrai, leurs cartes affichent `.card-done` (barré + grisé)
 - Les cartes ont un champ `notes` (chaîne) persisté via `updateCardNotes`, éditable inline (textarea toggleable)
+- Les cartes ont un champ `tags` (array de strings) persisté via `updateCardTags`, affiché en chips colorés (hash du nom), éditable inline (bouton `+ tag`)
 - Les cartes ont un champ `doneAt` (ISO string ou null) stocké automatiquement quand glissées dans une liste "terminée"
 - `refreshHeaderInfo()` et `refreshCountBadge(id)` sont async, lisent les données via DB (pas le DOM)
 
@@ -148,7 +151,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 ### P0 — Indispensable pour un usage partagé
 
 1. **Hébergement statique** — Déployer sur GitHub Pages / Netlify / Vercel. Le fichier ne fonctionne pas en `file://` (CORS bloque fetch). Sans ça, aucun non-technicien ne peut utiliser l'outil. Alternative : un script shell/batch qui lance un serveur local (`python -m http.server`).
-2. **Supprimer le mur de la clé API** — Demander à un utilisateur lambda de créer un compte OpenAI et coller une clé API est exactement la friction que l'outil est censé éliminer. Options : backend léger qui proxy les appels IA, intégration d'un modèle local (WebLLM / Ollama), ou mode dégradé avec templates de décomposition pré-faits (pas d'IA requise). ✅ **Templates intégrés** — 12 corvées universelles avec matching fuzzy, zero API.
+2. **Supprimer le mur de la clé API** — Demander à un utilisateur lambda de créer un compte OpenAI et coller une clé API est exactement la friction que l'outil est censé éliminer. Options : backend léger qui proxy les appels IA, intégration d'un modèle local (WebLLM / Ollama), ou mode dégradé avec templates de décomposition pré-faits (pas d'IA requise). ✅ **Templates first** — 12 corvées universelles avec matching fuzzy, grille de templates dans la modale quand l'API n'est pas configurée, FAB toujours invitant (plus de `!` rouge).
 3. **Onboarding** — La liste "Tuto" est un bon début mais ne montre pas pourquoi c'est différent d'un Trello. Ajouter une première décomposition guidée ("Essayez : ranger mon bureau") qui rend le concept tangible en 30 secondes. ✅ **Onboarding interactif** — Tuto reformulé en consignes actionnables, liste "Ranger une surface" avec 6 micro-tâches d'exemple (template réel) pour un premier drag en <10s.
 
 ### P1 — Utile au quotidien
@@ -159,11 +162,21 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 
 ### P2 — Nice to have
 
-7. **Notes markdown** — Rendu basique (gras, italique, code inline). ✅ **Implémenté** — cycle édition/preview/fermé, pastille colorée sur les cartes ayant des notes.
-8. **Tags** — Champ `tags: []` sur les cartes, chips colorés, filtrable via la recherche (~70-85 LOC).
+7. **Notes markdown** — Rendu basique (gras, italique, code inline). ✅ **Implémenté** — cycle édition/preview/fermé, rendu markdown complet (gras, italique, code, liens, titres, listes, ligne horizontale), pastille colorée sur les cartes ayant des notes.
+8. **Tags** — Champ `tags: []` sur les cartes, chips colorés, filtrable via la recherche. ✅ **Implémenté** — chips par hash couleur, bouton `+ tag`, raccourci `t`, préservés au clipboard, recherchables.
 9. **Mode offline complet** — Service worker pour un fonctionnement 100% hors-ligne, cohérent avec la philosophie zéro-dépendance.
 
 ## Changelog
+
+### 2026-07-01 — Tags, markdown enrichi, templates first, accessibilité, robustesse
+- **Tags** : champ `tags: []` sur les cartes, chips colorés par hash du nom, bouton `+ tag`, input inline (Enter ajoute, Escape annule), suppression par ✕. Raccourci `t`. Tags préservés au copier/coller/dupliquer/paste de liste. Recherchables via `Ctrl+K`. DB: `updateCardTags(id, tags)`.
+- **Markdown enrichi** : `#`, `##`, `###` → titres (h3/h4/h5), `- item` → listes à puces, `1. item` → listes numérotées, `[texte](url)` → liens cliquables, `---` → ligne horizontale.
+- **Templates first** : quand l'API n'est pas configurée, la modale Décomposer affiche directement une grille des 12 templates + lien `⚙ Configurer l'IA`. Le FAB est toujours `+` (plus jamais `!` rouge). L'IA devient un bonus, pas un prérequis.
+- **Accessibilité** : `label[for]` sur tous les champs de formulaire, `aria-label` sur les 20+ boutons (icônes header, actions carte/liste, FAB). Mise à jour dynamique des aria-labels (collapse, notes, FAB, `_toggleAllNotes`).
+- **Robustesse** : `QuotaExceededError` affiche une bannière persistante dans le header (disparaît automatiquement quand l'espace se libère). `_snapshot()` avertit via `flashMessage` quand l'undo est désactivé (board > 200 ko). `parseAITasks` gère les code fences (\`\`\`json).
+- **Correctifs** : `_rebuild()` préserve `scrollLeft`. `_confettiDone` se reset toujours après les confettis (permet plusieurs célébrations). `fuzzyMatch` dédupliqué en helper partagé. Le collapse bouton met à jour son `title`/`aria-label` au toggle.
+- **Tests** : `test.html` — 26 tests DB via iframe + postMessage (reset, listes, cartes, export/import, streak). Lancement : `python3 -m http.server`, puis `http://localhost:8000/test.html`.
+- **Fichier** : ~3900 → ~4200 lignes (+300)
 
 ### 2026-07-01 — Onboarding, streak robuste, notes markdown, UX polie
 - **Onboarding interactif** : Tuto reformulé en 5 cartes actionnables (1, 2, 2a, 3, 4), liste "Ranger une surface" avec 6 micro-tâches d'exemple. Le Backlog reste vide pour l'utilisateur.
@@ -235,7 +248,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - **Snapshot atomique sur paste carte** : `_paste()` wrappe `createCard` + `updateCardNotes` dans un seul `mutate()`. Avant, l'undo après un collage avec notes perdait les notes.
 - **Suppression de `location.reload()`** : undo, redo, reset et import reconstruisent le DOM via `_rebuild()` au lieu de recharger la page. Plus de flash visuel, scroll et sélection préservés.
 - **`max_tokens` explicite** : ajout de `max_tokens: 2048` pour OpenAI et `maxOutputTokens: 2048` pour Google Gemini. Anthropic avait déjà `max_tokens: 4096`. Évite les troncatures de réponse JSON sur les petits modèles.
-- Extraction de `_rebuild()` : la reconstruction DOM (board name, listes, cartes, widget, FAB badge) est extraite de `init()` et réutilisée par undo/redo/reset/import.
+- Extraction de `_rebuild()` : la reconstruction DOM (board name, listes, cartes, widget) est extraite de `init()` et réutilisée par undo/redo/reset/import.
 
 ### 2026-06-21 — Bugs finaux
 - **Bug 1 — `getAfter` cartes recevait `x` au lieu de `y`** : le moteur DnD appelle `cfg.getAfter(container, x, y, ghostEl)` mais le callback carte déclarait `(container, y)`, donc `y` recevait la valeur de `x`. Corrigé en `(container, x, y)`.
@@ -324,5 +337,5 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Abstraction fournisseur IA : switch OpenAI/Anthropic/Google.
 - DnD : `mousedown` → `pointerdown` + `setPointerCapture`
 - Responsive : media query ≤640px, header compact
-- Export/Import JSON, FAB badge rouge si API non configurée.
+- Export/Import JSON, FAB badge si API non configurée.
 - Tuto : liste avec cartes-exemples dans `DB._default`.

@@ -594,6 +594,33 @@
       font-family: 'Cascadia Code', 'Fira Code', monospace;
       font-size: 11px;
     }
+    .card-notes-preview a { color: var(--accent); }
+    .card-notes-preview h3 { color: var(--text); font-weight: 600; font-size: 14px; margin: 8px 0 4px; }
+    .card-notes-preview h4 { color: var(--text); font-weight: 600; font-size: 13px; margin: 6px 0 3px; }
+    .card-notes-preview h5 { color: var(--text); font-weight: 600; font-size: 12px; margin: 4px 0 2px; }
+    .card-notes-preview ul, .card-notes-preview ol { padding-left: 16px; margin: 4px 0; }
+    .card-notes-preview li { margin-bottom: 2px; }
+    .card-notes-preview hr { border: none; border-top: 1px solid var(--border); margin: 6px 0; }
+
+    .card-tags { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    .card-tag {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 1px 7px; border-radius: 10px; font-size: 10px; line-height: 1.6;
+      color: #fff; white-space: nowrap;
+    }
+    .card-tag-remove { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; border: none; border-radius: 50%; background: rgba(255,255,255,.25); color: inherit; cursor: pointer; font-size: 8px; line-height: 1; padding: 0; opacity: .7; transition: opacity var(--transition); }
+    .card-tag-remove:hover { opacity: 1; background: rgba(255,255,255,.4); }
+    .card-tag-add {
+      display: inline-flex; align-items: center; gap: 2px;
+      padding: 1px 6px; border: 1px dashed var(--border); border-radius: 10px;
+      background: transparent; color: var(--text-dim); cursor: pointer;
+      font-size: 10px; font-family: inherit; transition: border-color var(--transition), color var(--transition);
+    }
+    .card-tag-add:hover { border-color: var(--accent); color: var(--accent); }
+    .card-tag-input {
+      width: 80px; background: transparent; border: none; border-bottom: 1px solid var(--accent);
+      color: var(--text); font-family: inherit; font-size: 10px; outline: none; padding: 1px 2px;
+    }
 
     .card.card-selected {
       border-color: var(--accent);
@@ -1064,6 +1091,39 @@
     .template-banner-icon { font-size: 16px; flex-shrink: 0; }
     .template-banner-text { flex: 1; }
 
+    /* ─── Template grid ──────────────────────────────────────────────── */
+    .template-grid {
+      display: none;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .template-grid.open { display: flex; }
+    .template-chip {
+      padding: 6px 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      transition: background var(--transition), border-color var(--transition);
+    }
+    .template-chip:hover {
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      border-color: var(--accent);
+    }
+    .template-chip:disabled { opacity: .45; cursor: not-allowed; }
+    .template-grid-hint {
+      width: 100%;
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
     /* ─── Decompose textarea ──────────────────────────────────────────────── */
     .field-textarea {
       background: var(--surface-2);
@@ -1132,24 +1192,24 @@
     <span class="streak-badge" id="streakBadge"></span>
     <span class="spacer"></span>
     <span class="header-actions">
-    <button class="btn-icon" id="themeToggle" title="Changer le thème">&#9788;</button>
-    <button class="btn-icon" id="configBtn" title="Configuration API IA">&#9881;</button>
-    <button class="btn-icon" id="resetBtn" title="Remettre le board à zéro">&#8634;</button>
-    <button class="btn-icon" id="helpBtn" title="Raccourcis clavier">?</button>
-    <button class="btn-icon" id="exportBtn" title="Exporter le board (JSON)">&#8595;</button>
-    <button class="btn-icon" id="importBtn" title="Importer un board (JSON)">&#8593;</button>
+    <button class="btn-icon" id="themeToggle" title="Changer le thème" aria-label="Changer le thème">&#9788;</button>
+    <button class="btn-icon" id="configBtn" title="Configuration API IA" aria-label="Configuration API IA">&#9881;</button>
+    <button class="btn-icon" id="resetBtn" title="Remettre le board à zéro" aria-label="Remettre le board à zéro">&#8634;</button>
+    <button class="btn-icon" id="helpBtn" title="Raccourcis clavier" aria-label="Raccourcis clavier">?</button>
+    <button class="btn-icon" id="exportBtn" title="Exporter le board (JSON)" aria-label="Exporter le board (JSON)">&#8595;</button>
+    <button class="btn-icon" id="importBtn" title="Importer un board (JSON)" aria-label="Importer un board (JSON)">&#8593;</button>
     </span>
     <input type="file" id="importFile" accept=".json,application/json" style="display:none" />
     <span class="header-info" id="headerInfo"></span>
   </header>
 
-  <button class="fab" id="decomposeFab" title="Décomposer une tâche (IA)">+</button>
+  <button class="fab" id="decomposeFab" title="Décomposer une tâche (IA)" aria-label="Décomposer une tâche (IA)">+</button>
 
   <div class="modal-overlay" id="configModal">
     <div class="modal">
       <div class="modal-header">
         <span class="modal-title">Configuration</span>
-        <button class="btn-icon" id="configModalClose" title="Fermer">&#10005;</button>
+        <button class="btn-icon" id="configModalClose" title="Fermer" aria-label="Fermer">&#10005;</button>
       </div>
       <div class="modal-tabs">
         <button class="modal-tab active" data-tab="system">Système</button>
@@ -1157,7 +1217,7 @@
       </div>
       <div class="modal-body">
         <div class="tab-content active" id="tab-system">
-          <label class="field">
+          <label class="field" for="cfgProvider">
             <span class="field-label">Fournisseur</span>
             <select id="cfgProvider" class="field-input">
               <option value="openai">OpenAI / compatible (DeepSeek, Groq…)</option>
@@ -1165,17 +1225,17 @@
               <option value="google">Google (Gemini)</option>
             </select>
           </label>
-          <label class="field">
+          <label class="field" for="cfgEndpoint">
             <span class="field-label">Endpoint</span>
             <input type="url" id="cfgEndpoint" class="field-input"
                    placeholder="https://api.openai.com/v1/chat/completions" />
           </label>
-          <label class="field">
+          <label class="field" for="cfgKey">
             <span class="field-label">Clé API</span>
             <input type="password" id="cfgKey" class="field-input"
                    placeholder="sk-…" />
           </label>
-          <label class="field">
+          <label class="field" for="cfgModel">
             <span class="field-label">Modèle</span>
             <input type="text" id="cfgModel" class="field-input"
                    placeholder="deepseek-v4-flash" />
@@ -1186,7 +1246,7 @@
           </div>
         </div>
         <div class="tab-content" id="tab-themes">
-          <label class="field">
+          <label class="field" for="cfgDarkTheme">
             <span class="field-label">Thème sombre</span>
             <select id="cfgDarkTheme" class="field-input">
               <option value="warm-night">Warm Night</option>
@@ -1195,7 +1255,7 @@
               <option value="tokyo-night">Tokyo Night</option>
             </select>
           </label>
-          <label class="field">
+          <label class="field" for="cfgLightTheme">
             <span class="field-label">Thème clair</span>
             <select id="cfgLightTheme" class="field-input">
               <option value="soft-sand">Soft Sand</option>
@@ -1216,10 +1276,10 @@
     <div class="modal">
       <div class="modal-header">
         <span class="modal-title">Décomposer une tâche</span>
-        <button class="btn-icon" id="decomposeModalClose" title="Fermer">&#10005;</button>
+        <button class="btn-icon" id="decomposeModalClose" title="Fermer" aria-label="Fermer">&#10005;</button>
       </div>
       <div class="modal-body">
-        <label class="field">
+        <label class="field" for="decomposeInput">
           <span class="field-label">Tâche à décomposer</span>
           <textarea id="decomposeInput" class="field-textarea" rows="3"
                     placeholder="Rédiger mon rapport annuel…"></textarea>
@@ -1356,17 +1416,17 @@ const DB = (() => {
       { id: uid(),      title: 'Done',                 position: 5, done: true, collapsed: false },
     ],
     cards: [
-      { id: uid(), listId: _tutoId,    text: '1. Cette liste \u00ab Ranger une surface \u00bb est le r\u00e9sultat d\u2019une d\u00e9composition IA',     position: 0, notes: '', doneAt: null },
-      { id: uid(), listId: _tutoId,    text: '2. Glisse des cartes dans In Progress pour commencer (pas plus de 3 \u00e0 la fois)',     position: 1, notes: '', doneAt: null },
-      { id: uid(), listId: _tutoId,    text: '2a. Si une carte est bloqu\u00e9e ou en attente de validation, glisse-la dans Waiting',   position: 2, notes: '', doneAt: null },
-      { id: uid(), listId: _tutoId,    text: '3. Une fois faite, glisse-la dans Done \u2192 la barre de progression avance',              position: 3, notes: '', doneAt: null },
-      { id: uid(), listId: _tutoId,    text: '4. Clique + pour d\u00e9composer TES corv\u00e9es en micro-t\u00e2ches',                         position: 4, notes: '', doneAt: null },
-      { id: uid(), listId: _onboardId, text: 'Choisir une seule surface \u00e0 vider',                                                     position: 0, notes: '', doneAt: null },
-      { id: uid(), listId: _onboardId, text: 'Poser un sac poubelle \u00e0 c\u00f4t\u00e9',                                                position: 1, notes: '', doneAt: null },
-      { id: uid(), listId: _onboardId, text: 'Jeter les d\u00e9chets visibles',                                                            position: 2, notes: '', doneAt: null },
-      { id: uid(), listId: _onboardId, text: 'Mettre les objets \u00e0 garder dans une bo\u00eete',                                         position: 3, notes: '', doneAt: null },
-      { id: uid(), listId: _onboardId, text: 'Essuyer la surface avec un chiffon',                                                        position: 4, notes: '', doneAt: null },
-      { id: uid(), listId: _onboardId, text: 'Jeter le sac poubelle',                                                                    position: 5, notes: '', doneAt: null },
+      { id: uid(), listId: _tutoId,    text: '1. Cette liste \u00ab Ranger une surface \u00bb est le r\u00e9sultat d\u2019une d\u00e9composition IA',     position: 0, notes: '', tags: [], doneAt: null },
+      { id: uid(), listId: _tutoId,    text: '2. Glisse des cartes dans In Progress pour commencer (pas plus de 3 \u00e0 la fois)',     position: 1, notes: '', tags: [], doneAt: null },
+      { id: uid(), listId: _tutoId,    text: '2a. Si une carte est bloqu\u00e9e ou en attente de validation, glisse-la dans Waiting',   position: 2, notes: '', tags: [], doneAt: null },
+      { id: uid(), listId: _tutoId,    text: '3. Une fois faite, glisse-la dans Done \u2192 la barre de progression avance',              position: 3, notes: '', tags: [], doneAt: null },
+      { id: uid(), listId: _tutoId,    text: '4. Clique + pour d\u00e9composer TES corv\u00e9es en micro-t\u00e2ches',                         position: 4, notes: '', tags: [], doneAt: null },
+      { id: uid(), listId: _onboardId, text: 'Choisir une seule surface \u00e0 vider',                                                     position: 0, notes: '', tags: [], doneAt: null },
+      { id: uid(), listId: _onboardId, text: 'Poser un sac poubelle \u00e0 c\u00f4t\u00e9',                                                position: 1, notes: '', tags: [], doneAt: null },
+      { id: uid(), listId: _onboardId, text: 'Jeter les d\u00e9chets visibles',                                                            position: 2, notes: '', tags: [], doneAt: null },
+      { id: uid(), listId: _onboardId, text: 'Mettre les objets \u00e0 garder dans une bo\u00eete',                                         position: 3, notes: '', tags: [], doneAt: null },
+      { id: uid(), listId: _onboardId, text: 'Essuyer la surface avec un chiffon',                                                        position: 4, notes: '', tags: [], doneAt: null },
+      { id: uid(), listId: _onboardId, text: 'Jeter le sac poubelle',                                                                    position: 5, notes: '', tags: [], doneAt: null },
     ],
   };
 
@@ -1392,9 +1452,18 @@ const DB = (() => {
     if (!_saving) return;
     try {
       localStorage.setItem(KEY, JSON.stringify(_state));
+      const banner = document.getElementById('quotaWarn');
+      if (banner) banner.remove();
     } catch (e) {
       if (e.name === 'QuotaExceededError') {
-        alert('Espace de stockage saturé. Supprimez des listes ou des cartes.');
+        if (!document.getElementById('quotaWarn')) {
+          const warn = document.createElement('span');
+          warn.id = 'quotaWarn';
+          warn.style.cssText = 'color:var(--danger);font-size:12px;font-weight:600;margin-left:10px;flex-shrink:0;animation:fadeIn .2s ease';
+          warn.textContent = '\u26A0 Stockage satur\u00E9 \u2014 supprimez des donn\u00E9es et exportez';
+          const spacer = document.querySelector('header .spacer');
+          if (spacer) spacer.before(warn);
+        }
       } else {
         throw e;
       }
@@ -1473,7 +1542,7 @@ const DB = (() => {
     async createCard(listId, text) {
       const siblings = _state.cards.filter(c => c.listId === listId);
       const pos = siblings.length ? Math.max(...siblings.map(c => c.position)) + 1 : 0;
-      const card = { id: uid(), listId, text, position: pos, notes: '', doneAt: null };
+      const card = { id: uid(), listId, text, position: pos, notes: '', tags: [], doneAt: null };
       _state.cards.push(card);
       _save();
       return _clone(card);
@@ -1486,6 +1555,11 @@ const DB = (() => {
     async updateCardNotes(id, notes) {
       const c = _state.cards.find(c => c.id === id);
       if (c) { c.notes = notes; _save(); }
+      return c ? _clone(c) : null;
+    },
+    async updateCardTags(id, tags) {
+      const c = _state.cards.find(c => c.id === id);
+      if (c) { c.tags = tags; _save(); }
       return c ? _clone(c) : null;
     },
     async setCardDoneAt(id, doneAt) {
@@ -2013,7 +2087,7 @@ const App = (() => {
         requestAnimationFrame(frame);
       } else {
         canvas.remove();
-        if (elapsed < 4000) _confettiDone = false;
+        _confettiDone = false;
       }
     }
     requestAnimationFrame(frame);
@@ -2046,12 +2120,81 @@ const App = (() => {
   }
 
   function renderMarkdown(text) {
-    let html = esc(text);
-    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    html = html.replace(/`(.+?)`/g, '<code>$1</code>');
-    html = html.replace(/\n\n/g, '<br><br>');
-    return html;
+    const lines = text.split('\n');
+    const out = [];
+    let inUl = false, inOl = false;
+
+    function closeList() {
+      if (inUl) { out.push('</ul>'); inUl = false; }
+      if (inOl) { out.push('</ol>'); inOl = false; }
+    }
+
+    function inline(line) {
+      let html = line;
+      const links = [];
+      html = html.replace(/\[(.+?)\]\((.+?)\)/g, (_, text, url) => {
+        links.push('<a href="' + url + '" target="_blank" rel="noopener">' + esc(text) + '</a>');
+        return '\x00L' + (links.length - 1) + '\x00';
+      });
+      html = esc(html);
+      html = html.replace(/\x00L(\d+)\x00/g, (_, i) => links[+i]);
+      html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+      html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+      return html;
+    }
+
+    for (const line of lines) {
+      const hMatch = line.match(/^(#{1,3})\s+(.+)/);
+      if (hMatch) {
+        closeList();
+        out.push('<h' + (hMatch[1].length + 2) + '>' + inline(hMatch[2]) + '</h' + (hMatch[1].length + 2) + '>');
+        continue;
+      }
+
+      const olMatch = line.match(/^(\d+)\.\s+(.+)/);
+      if (olMatch) {
+        if (!inOl) { closeList(); out.push('<ol>'); inOl = true; }
+        out.push('<li>' + inline(olMatch[2]) + '</li>');
+        continue;
+      }
+
+      const ulMatch = line.match(/^[-*+]\s+(.+)/);
+      if (ulMatch) {
+        closeList();
+        if (!inUl) { out.push('<ul>'); inUl = true; }
+        out.push('<li>' + inline(ulMatch[1]) + '</li>');
+        continue;
+      }
+
+      if (line.trim() === '') {
+        closeList();
+        out.push('<br>');
+        continue;
+      }
+
+      if (/^[-*_]{3,}\s*$/.test(line)) {
+        closeList();
+        out.push('<hr>');
+        continue;
+      }
+
+      closeList();
+      out.push(inline(line));
+    }
+
+    closeList();
+    return out.join('\n');
+  }
+
+  function fuzzyMatch(text, query) {
+    const t = text.toLowerCase();
+    const q = query.toLowerCase();
+    let qi = 0;
+    for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+      if (t[ti] === q[qi]) qi++;
+    }
+    return qi === q.length;
   }
 
   function flashMessage(el, msg, cls, ms) {
@@ -2094,7 +2237,9 @@ const App = (() => {
   function extractCardData(el) {
     const textEl = el.querySelector('.card-text');
     const notesEl = el.querySelector('.card-notes');
-    return { text: textEl ? textEl.textContent : '', notes: notesEl ? notesEl.value : '' };
+    let tags = [];
+    try { tags = JSON.parse(el.dataset.tags || '[]'); } catch (_) {}
+    return { text: textEl ? textEl.textContent : '', notes: notesEl ? notesEl.value : '', tags };
   }
 
   function extractListData(el) {
@@ -2110,6 +2255,7 @@ const App = (() => {
   const RK  = 'kanbanjs:redo';
   const UKS = 'kanbanjs:undo-streak';
   const RKS = 'kanbanjs:redo-streak';
+  let _snapshotSkipped = false;
 
   function _loadStack(key) {
     try { return JSON.parse(sessionStorage.getItem(key)) || []; } catch (_) { return []; }
@@ -2118,7 +2264,14 @@ const App = (() => {
 
   async function _snapshot() {
     const json = await DB.exportJSON();
-    if (json.length > 200_000) return;
+    if (json.length > 200_000) {
+      if (!_snapshotSkipped) {
+        _snapshotSkipped = true;
+        flashMessage(headerInfoEl, '\u26A0 Undo d\u00E9sactiv\u00E9 (board > 200 ko)', '', 5000);
+      }
+      return;
+    }
+    _snapshotSkipped = false;
     const undo  = _loadStack(UK);
     const undoS = _loadStack(UKS);
     undo.push(json);
@@ -2181,6 +2334,8 @@ const App = (() => {
     wrap.dataset.id     = card.id;
     wrap.dataset.listId = card.listId;
     if (card.doneAt) wrap.dataset.doneAt = card.doneAt;
+    card.tags = card.tags || [];
+    wrap.dataset.tags = JSON.stringify(card.tags);
 
     const textEl = make('div', 'card-text');
     textEl.textContent = card.text;
@@ -2192,9 +2347,11 @@ const App = (() => {
     const actionsEl = make('div', 'card-actions');
     const notesBtn  = make('button', 'btn-icon');
     notesBtn.title       = 'Notes';
+    notesBtn.setAttribute('aria-label', 'Notes');
     notesBtn.textContent = '\u2261';
     const delBtn = make('button', 'btn-icon danger');
     delBtn.title       = 'Supprimer';
+    delBtn.setAttribute('aria-label', 'Supprimer');
     delBtn.textContent = '\u2715';
     actionsEl.append(notesBtn, delBtn);
 
@@ -2205,6 +2362,57 @@ const App = (() => {
     notesEl.value = card.notes || '';
 
     const notesPreview = make('div', 'card-notes-preview');
+
+    // Tags
+    const TAG_COLORS = ['#e8a85a','#58a6ff','#5ecf9a','#f7768e','#7aa2f7','#d2991d','#a371f7','#3fb950','#f0883e','#db6d28'];
+    function tagColor(name) { let h = 0; for (let i = 0; i < name.length; i++) h = ((h << 5) - h) + name.charCodeAt(i); return TAG_COLORS[Math.abs(h) % TAG_COLORS.length]; }
+
+    const tagsEl = make('div', 'card-tags');
+    const tagAddBtn = make('button', 'card-tag-add');
+    tagAddBtn.textContent = '+ tag';
+
+    function renderTags() {
+      tagsEl.querySelectorAll('.card-tag, .card-tag-input').forEach(el => el.remove());
+      wrap.dataset.tags = JSON.stringify(card.tags);
+      for (const tag of card.tags) {
+        const chip = make('span', 'card-tag');
+        chip.style.background = tagColor(tag);
+        const label = document.createTextNode(tag);
+        const rm = make('button', 'card-tag-remove');
+        rm.textContent = '\u2715';
+        rm.addEventListener('click', async e => {
+          e.stopPropagation();
+          card.tags = card.tags.filter(t => t !== tag);
+          await mutate(() => DB.updateCardTags(card.id, [...card.tags]));
+          renderTags();
+        });
+        chip.append(label, rm);
+        tagsEl.insertBefore(chip, tagAddBtn);
+      }
+    }
+
+    tagAddBtn.addEventListener('click', () => {
+      if (tagsEl.querySelector('.card-tag-input')) return;
+      const input = make('input', 'card-tag-input');
+      input.placeholder = 'tag\u2026';
+      input.addEventListener('keydown', async e => {
+        if (e.key === 'Enter') {
+          const val = input.value.trim();
+          if (val && !card.tags.includes(val)) {
+            card.tags.push(val);
+            await mutate(() => DB.updateCardTags(card.id, [...card.tags]));
+          }
+          renderTags();
+        }
+        if (e.key === 'Escape') renderTags();
+      });
+      input.addEventListener('blur', () => { if (input.isConnected) renderTags(); });
+      tagsEl.insertBefore(input, tagAddBtn);
+      input.focus();
+    });
+
+    tagsEl.appendChild(tagAddBtn);
+    renderTags();
 
     // Editor
     const editor = make('textarea', 'card-editor');
@@ -2217,7 +2425,7 @@ const App = (() => {
     cancelBtn.textContent = 'Annuler';
     editorActions.append(saveBtn, cancelBtn);
 
-    wrap.append(textEl, doneAtEl, notesEl, notesPreview, actionsEl, editor, editorActions);
+    wrap.append(textEl, doneAtEl, notesEl, notesPreview, tagsEl, actionsEl, editor, editorActions);
 
     function enterEdit() {
       wrap.classList.add('editing');
@@ -2244,6 +2452,7 @@ const App = (() => {
       notesEl.classList.add('open');
       notesBtn.textContent = '\u270e';
       notesBtn.title = 'Pr\u00e9visualiser';
+      notesBtn.setAttribute('aria-label', 'Pr\u00e9visualiser');
       notesEl.focus();
       requestAnimationFrame(() => {
         requestAnimationFrame(() => autoResize(notesEl));
@@ -2257,6 +2466,7 @@ const App = (() => {
       notesPreview.classList.add('open');
       notesBtn.textContent = '\u{1F441}';
       notesBtn.title = 'Fermer';
+      notesBtn.setAttribute('aria-label', 'Fermer');
     }
 
     function closeNotes() {
@@ -2264,6 +2474,7 @@ const App = (() => {
       notesPreview.classList.remove('open');
       notesBtn.textContent = '\u2261';
       notesBtn.title = 'Notes';
+      notesBtn.setAttribute('aria-label', 'Notes');
     }
 
     function toggleNotes() {
@@ -2369,6 +2580,7 @@ const App = (() => {
           const c = await DB.createCard(toListId, data.text);
           await DB.moveCard(c.id, toListId, newPos);
           if (data.notes) await DB.updateCardNotes(c.id, data.notes);
+          if (data.tags && data.tags.length) await DB.updateCardTags(c.id, data.tags);
           return c;
         });
         const destCards = destListEl && destListEl.querySelector('.cards');
@@ -2436,15 +2648,18 @@ const App = (() => {
     countBadge.textContent = '0';
     const doneToggle = make('button', 'btn-icon');
     doneToggle.title       = 'Marquer comme liste termin\u00E9e';
+    doneToggle.setAttribute('aria-label', 'Marquer comme liste termin\u00E9e');
     doneToggle.textContent = '\u2713';
     doneToggle.dataset.done = list.done ? 'true' : 'false';
     if (list.done) doneToggle.classList.add('active');
     const collapseBtn = make('button', 'btn-icon');
     collapseBtn.title = 'Replier la liste';
+    collapseBtn.setAttribute('aria-label', 'Replier la liste');
     collapseBtn.textContent = list.collapsed ? '\u25B8' : '\u25BE';
     if (list.collapsed) collapseBtn.classList.add('active');
     const delListBtn = make('button', 'btn-icon danger');
     delListBtn.title       = 'Supprimer la liste';
+    delListBtn.setAttribute('aria-label', 'Supprimer la liste');
     delListBtn.textContent = '\u{1F5D1}';
     headerEl.append(titleSpan, titleInput, countBadge, doneToggle, collapseBtn, delListBtn);
 
@@ -2580,6 +2795,8 @@ const App = (() => {
       list.collapsed = updated.collapsed;
       wrap.classList.toggle('collapsed', updated.collapsed);
       collapseBtn.textContent = updated.collapsed ? '\u25B8' : '\u25BE';
+      collapseBtn.title = updated.collapsed ? 'D\u00E9plier la liste' : 'Replier la liste';
+      collapseBtn.setAttribute('aria-label', collapseBtn.title);
       collapseBtn.classList.toggle('active', updated.collapsed);
     });
 
@@ -2747,10 +2964,6 @@ const App = (() => {
       }
       saveCfg({ provider, endpoint, apiKey, model });
       flashMessage(statusEl, 'Configuration sauvegardée.', 'success', 3000);
-      const fab = document.getElementById('decomposeFab');
-      fab.classList.remove('fab-no-api');
-      fab.textContent = '+';
-      fab.title = 'Décomposer une tâche (IA)';
     });
 
     document.getElementById('cfgSaveTheme').addEventListener('click', () => {
@@ -2914,6 +3127,8 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
   ];
 
   function parseAITasks(raw) {
+    const fenceMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (fenceMatch) raw = fenceMatch[1];
     function accept(arr) {
       if (!Array.isArray(arr)) return null;
       const filtered = arr.filter(t => typeof t === 'string' && t.trim().length > 0);
@@ -3152,12 +3367,14 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     }
 
     function open() {
+      const cfg = readAIConfig();
+      const hasAPI = cfg && cfg.apiKey && cfg.model;
+
       input.value = '';
       debugLines.length = 0;
       debugPanel.innerHTML = '';
       debugPanel.classList.remove('open');
       debugToggle.textContent = '\u25BC Debug';
-      overlay.classList.add('open');
       spinner.classList.remove('active');
       btn.disabled = false;
       statusEl.textContent = '';
@@ -3165,7 +3382,19 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       templateBanner.classList.remove('open', 'disabled');
       templateBanner.removeAttribute('tabindex');
       templateBanner._template = null;
-      input.focus();
+
+      if (hasAPI) {
+        fieldEl.style.display = '';
+        modalActions.style.display = '';
+        templateGrid.classList.remove('open');
+        input.focus();
+      } else {
+        fieldEl.style.display = 'none';
+        modalActions.style.display = 'none';
+        templateGrid.classList.add('open');
+      }
+
+      overlay.classList.add('open');
     }
 
     function close() {
@@ -3184,6 +3413,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
     const modalBody = overlay.querySelector('.modal-body');
     const modalActions = overlay.querySelector('.modal-actions');
+    const fieldEl = input.closest('.field');
     const templateBanner = make('div', 'template-banner');
     templateBanner.innerHTML = '<span class="template-banner-icon">\uD83D\uDCA1</span><span class="template-banner-text"></span>';
     templateBanner.addEventListener('click', async () => {
@@ -3207,15 +3437,27 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     });
     modalBody.insertBefore(templateBanner, modalActions);
 
-    function fuzzyMatch(text, query) {
-      const t = text.toLowerCase();
-      const q = query.toLowerCase();
-      let qi = 0;
-      for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-        if (t[ti] === q[qi]) qi++;
-      }
-      return qi === q.length;
+    const templateGrid = make('div', 'template-grid');
+    for (const t of TEMPLATES) {
+      const chip = make('button', 'template-chip');
+      chip.textContent = t.name;
+      chip.addEventListener('click', async () => {
+        if (chip.disabled) return;
+        chip.disabled = true;
+        try { await createTemplateList(t); close(); }
+        catch (err) { flashMessage(statusEl, err.message, 'error', 6000); }
+        finally { chip.disabled = false; }
+      });
+      templateGrid.appendChild(chip);
     }
+    const gridHint = make('div', 'template-grid-hint');
+    const configLink = make('button', 'btn btn-ghost');
+    configLink.textContent = '\u2699 Configurer l\u2019IA';
+    configLink.style.cssText = 'font-size: 11px; padding: 2px 8px;';
+    configLink.addEventListener('click', () => { close(); document.getElementById('configBtn').click(); });
+    gridHint.append(document.createTextNode('Ou '), configLink);
+    templateGrid.appendChild(gridHint);
+    modalBody.insertBefore(templateGrid, templateBanner);
 
     input.addEventListener('input', () => {
       const query = input.value.trim();
@@ -3271,8 +3513,8 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
   let _selList    = null;
   const Clipboard = {
     _data: null,
-    copyCard(data) { this._data = { type: 'card', text: data.text, notes: data.notes }; },
-    cutCard(data)  { this._data = { type: 'card', text: data.text, notes: data.notes }; },
+    copyCard(data) { this._data = { type: 'card', text: data.text, notes: data.notes, tags: data.tags }; },
+    cutCard(data)  { this._data = { type: 'card', text: data.text, notes: data.notes, tags: data.tags }; },
     copyList(data) { this._data = { type: 'list', title: data.title, cards: data.cards }; },
     cutList(data)  { this._data = { type: 'list', title: data.title, cards: data.cards }; },
     paste()        { return this._data; },
@@ -3426,6 +3668,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       const card   = await mutate(async () => {
         const c = await DB.createCard(listId, data.text);
         if (data.notes) await DB.updateCardNotes(c.id, data.notes);
+        if (data.tags && data.tags.length) await DB.updateCardTags(c.id, data.tags);
         return c;
       });
       const cardsEl = _selList.querySelector('.cards');
@@ -3445,6 +3688,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
         for (const c of data.cards) {
           const card = await DB.createCard(l.id, c.text);
           if (c.notes) await DB.updateCardNotes(card.id, c.notes);
+          if (c.tags && c.tags.length) await DB.updateCardTags(card.id, c.tags);
         }
         return l;
       }));
@@ -3507,6 +3751,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     const card = await mutate(async () => {
       const c = await DB.createCard(listId, data.text);
       if (data.notes) await DB.updateCardNotes(c.id, data.notes);
+      if (data.tags && data.tags.length) await DB.updateCardTags(c.id, data.tags);
       return c;
     });
     const cardEl = buildCard(card, done);
@@ -3533,6 +3778,12 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     if (btn) btn.click();
   }
 
+  function _tagCard() {
+    if (!_selCard || !_selCard.isConnected) return;
+    const btn = _selCard.querySelector('.card-tag-add');
+    if (btn) btn.click();
+  }
+
   function _toggleAllNotes() {
     const els = [...boardEl.querySelectorAll('.card-notes')].filter(el => el.value.trim());
     if (!els.length) return;
@@ -3544,7 +3795,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
         el.classList.remove('open', 'preview');
         if (previewEl) previewEl.classList.remove('open');
         const btn = wrap && wrap.querySelector('.card-actions .btn-icon[title*="Notes"], .card-actions .btn-icon[title*="Fermer"], .card-actions .btn-icon[title*="Pr\u00e9visualiser"]');
-        if (btn) { btn.textContent = '\u2261'; btn.title = 'Notes'; }
+        if (btn) { btn.textContent = '\u2261'; btn.title = 'Notes'; btn.setAttribute('aria-label', 'Notes'); }
       } else {
         el.classList.add('preview');
         if (previewEl) {
@@ -3552,7 +3803,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
           previewEl.classList.add('open');
         }
         const btn = wrap && wrap.querySelector('.card-actions .btn-icon[title="Notes"]');
-        if (btn) { btn.textContent = '\u{1F441}'; btn.title = 'Fermer'; }
+        if (btn) { btn.textContent = '\u{1F441}'; btn.title = 'Fermer'; btn.setAttribute('aria-label', 'Fermer'); }
       }
     });
   }
@@ -3584,6 +3835,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     E:      { fn: _toggleAllNotes, when: () => !_inInput() },
     x:      { fn: cutCard,        when: () => _selCard && _selCard.isConnected && !_inInput() },
     c:      { fn: duplicateCard,  when: () => _selCard && _selCard.isConnected && !_inInput() },
+    t:      { fn: _tagCard,       when: () => _selCard && _selCard.isConnected && !_inInput() },
     y:      { fn: copyCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
     u:      { fn: _undo,        when: () => _undoSize() && !_inInput() },
     p:      { fn: _paste,       when: () => _selList && _selList.isConnected && !Clipboard.isEmpty() && Clipboard.type() === 'card' && !_inInput() },
@@ -3658,6 +3910,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       [['e'],     'Ouvrir les notes'],
       [['E'],     'Plier/D\u00E9plier toutes les notes'],
       [['c'],     'Dupliquer'],
+      [['t'],     'Ajouter un tag'],
       [['x'],     'Couper'],
       [['y'],     'Copier'],
       [['p'],     'Coller'],
@@ -3738,16 +3991,6 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
     let _activeIdx = -1;
 
-    function fuzzy(text, query) {
-      const t = text.toLowerCase();
-      const q = query.toLowerCase();
-      let qi = 0;
-      for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-        if (t[ti] === q[qi]) qi++;
-      }
-      return qi === q.length;
-    }
-
     function search(query) {
       results.innerHTML = '';
       _activeIdx = -1;
@@ -3761,7 +4004,9 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
           const textEl = card.querySelector('.card-text');
           const text = textEl ? textEl.textContent : '';
           const notes = card.querySelector('.card-notes')?.value || '';
-          if (fuzzy(text, q) || fuzzy(notes, q) || fuzzy(listTitle, q)) {
+          let tagText = '';
+          try { tagText = JSON.parse(card.dataset.tags || '[]').join(' '); } catch (_) {}
+          if (fuzzyMatch(text, q) || fuzzyMatch(notes, q) || fuzzyMatch(listTitle, q) || fuzzyMatch(tagText, q)) {
             matches.push({ card, list, listTitle, text });
           }
         });
@@ -3849,6 +4094,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     boardNameInput.value = boardData.name;
     document.title = `KanbanJS \u00b7 ${boardData.name}`;
 
+    const scrollLeft = boardEl.scrollLeft;
     boardEl.innerHTML = '';
     clearSelection();
 
@@ -3861,19 +4107,9 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     }
 
     buildAddListWidget();
+    boardEl.scrollLeft = scrollLeft;
+    _snapshotSkipped = false;
     await refreshHeaderInfo();
-
-    const cfg = readAIConfig();
-    const fab  = document.getElementById('decomposeFab');
-    if (!cfg || !cfg.apiKey || !cfg.model) {
-      fab.classList.add('fab-no-api');
-      fab.textContent = '!';
-      fab.title = 'API non configurée — Cliquez sur ⚙';
-    } else {
-      fab.classList.remove('fab-no-api');
-      fab.textContent = '+';
-      fab.title = 'Décomposer une tâche (IA)';
-    }
   }
 
   // ── INIT ──────────────────────────────────────────────────
@@ -3896,10 +4132,46 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     }
   }
 
-  return { init };
+  return { init, _rebuild };
 })();
 
 App.init();
+
+window.__testAPI = (() => {
+  const origin = window.location.origin;
+
+  window.addEventListener('message', async (e) => {
+    if (e.origin !== origin && e.origin !== 'null') return;
+    const { msgId, method, ...args } = e.data || {};
+    if (!msgId || !method) return;
+
+    let result, error;
+    try {
+      switch (method) {
+        case 'reset':          await DB.reset(); await App._rebuild(); break;
+        case 'getLists':       result = await DB.getLists(); break;
+        case 'getCards':       result = await DB.getCards(args.listId); break;
+        case 'getBoardCards':  result = await DB.getAllCards(); break;
+        case 'createCard':     result = await DB.createCard(args.listId, args.text); break;
+        case 'createList':     result = await DB.createList(args.title); break;
+        case 'deleteCard':     await DB.deleteCard(args.id); break;
+        case 'deleteList':     await DB.deleteList(args.id); break;
+        case 'export':         result = await DB.exportJSON(); break;
+        case 'import':         await DB.importJSON(args.json); await App._rebuild(); break;
+        case 'getStreak':      result = JSON.parse(localStorage.getItem('kanbanjs:streak') || '{"streak":0,"lastDate":null,"todayCount":0,"todayDate":null}'); break;
+        case 'setStreak':      localStorage.setItem('kanbanjs:streak', JSON.stringify(args)); break;
+        case 'rebuild':        await App._rebuild(); break;
+        case 'getBoard':       result = await DB.getBoard(); break;
+        case 'cardCount':      result = (await DB.getAllCards()).length; break;
+        case 'listCount':      result = (await DB.getLists()).length; break;
+        default: throw new Error('Unknown method: ' + method);
+      }
+    } catch (err) { error = err.message; }
+    window.parent.postMessage({ msgId, result, error }, '*');
+  });
+
+  return { ready: true };
+})();
 </script>
 </body>
 </html>
