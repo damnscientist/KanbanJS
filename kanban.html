@@ -190,6 +190,24 @@
       flex-direction: column;
       height: 100vh;
       overflow: hidden;
+      position: relative;
+    }
+
+    #boardQuote {
+      position: absolute;
+      top: calc(52px + (100vh - 52px) * 2 / 3);
+      left: 0;
+      right: 0;
+      transform: translateY(-50%);
+      font-size: 28px;
+      font-style: italic;
+      font-weight: 300;
+      color: var(--text-dim);
+      opacity: .45;
+      text-align: center;
+      pointer-events: none;
+      padding: 0 40px;
+      z-index: 0;
     }
 
     header {
@@ -197,7 +215,7 @@
       align-items: center;
       gap: 12px;
       padding: 0 24px;
-      height: 52px;
+      min-height: 52px;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
@@ -272,7 +290,21 @@
     }
     .progress-fill.pulse { animation: progressPulse .6s ease; }
 
-    .today-count { color: var(--accent); }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+
+    .today-count { color: var(--accent); display: inline-block; }
+    .today-count.pop { animation: popIn .3s ease; }
+
+    @keyframes popIn {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.3); }
+      100% { transform: scale(1); }
+    }
 
     .header-info {
       font-size: 12px;
@@ -487,6 +519,17 @@
     }
     .card:hover .card-actions { display: flex; }
     .card-actions .btn-icon { width: 22px; height: 22px; font-size: 13px; }
+
+    .card.has-notes::after {
+      content: '';
+      position: absolute;
+      top: 7px;
+      right: 7px;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
 
     .card.editing { cursor: default; border-color: var(--accent); }
     .card.editing .card-text { display: none; }
@@ -1065,12 +1108,14 @@
     <span class="progress-pct" id="progressPct"></span>
     <span class="streak-badge" id="streakBadge"></span>
     <span class="spacer"></span>
+    <span class="header-actions">
     <button class="btn-icon" id="themeToggle" title="Changer le thème">&#9788;</button>
     <button class="btn-icon" id="configBtn" title="Configuration API IA">&#9881;</button>
     <button class="btn-icon" id="resetBtn" title="Remettre le board à zéro">&#8634;</button>
     <button class="btn-icon" id="helpBtn" title="Raccourcis clavier">?</button>
     <button class="btn-icon" id="exportBtn" title="Exporter le board (JSON)">&#8595;</button>
     <button class="btn-icon" id="importBtn" title="Importer un board (JSON)">&#8593;</button>
+    </span>
     <input type="file" id="importFile" accept=".json,application/json" style="display:none" />
     <span class="header-info" id="headerInfo"></span>
   </header>
@@ -1168,6 +1213,7 @@
       </div>
     </div>
   </div>
+  <span id="boardQuote"></span>
   <div id="board"></div>
 </div>
 
@@ -1273,22 +1319,31 @@ const DB = (() => {
   const KEY = 'kanbanjs:state';
   const uid = () => '_' + Math.random().toString(36).slice(2, 10);
 
-  const _tutoId = uid();
+  const _tutoId    = uid();
+  const _onboardId = uid();
 
   const _default = {
     board: { id: 'board-1', name: 'Mon Board' },
     lists: [
-      { id: _tutoId,    title: 'Tuto',         position: 0, collapsed: false },
-      { id: uid(), title: 'Backlog',     position: 1, collapsed: false },
-      { id: uid(), title: 'In Progress', position: 2, collapsed: false },
-      { id: uid(), title: 'Waiting',     position: 3, collapsed: false },
-      { id: uid(), title: 'Done',        position: 4, done: true, collapsed: false },
+      { id: _tutoId,    title: 'Tuto',                position: 0, collapsed: false },
+      { id: _onboardId, title: 'Ranger une surface',   position: 1, collapsed: false },
+      { id: uid(),      title: 'Backlog',              position: 2, collapsed: false },
+      { id: uid(),      title: 'In Progress',          position: 3, collapsed: false },
+      { id: uid(),      title: 'Waiting',              position: 4, collapsed: false },
+      { id: uid(),      title: 'Done',                 position: 5, done: true, collapsed: false },
     ],
     cards: [
-      { id: uid(), listId: _tutoId, text: '1. Cliquer + pour décomposer une corvée',             position: 0, notes: '', doneAt: null },
-      { id: uid(), listId: _tutoId, text: '2. L\'IA crée des micro-tâches (30s-3min)',       position: 1, notes: '', doneAt: null },
-      { id: uid(), listId: _tutoId, text: '3. Adapter et glisser dans Backlog',               position: 2, notes: '', doneAt: null },
-      { id: uid(), listId: _tutoId, text: '4. Cocher ✓ sur une liste pour la marquer fermée', position: 3, notes: '', doneAt: null },
+      { id: uid(), listId: _tutoId,    text: '1. Cette liste \u00ab Ranger une surface \u00bb est le r\u00e9sultat d\u2019une d\u00e9composition IA',     position: 0, notes: '', doneAt: null },
+      { id: uid(), listId: _tutoId,    text: '2. Glisse des cartes dans In Progress pour commencer (pas plus de 3 \u00e0 la fois)',     position: 1, notes: '', doneAt: null },
+      { id: uid(), listId: _tutoId,    text: '2a. Si une carte est bloqu\u00e9e ou en attente de validation, glisse-la dans Waiting',   position: 2, notes: '', doneAt: null },
+      { id: uid(), listId: _tutoId,    text: '3. Une fois faite, glisse-la dans Done \u2192 la barre de progression avance',              position: 3, notes: '', doneAt: null },
+      { id: uid(), listId: _tutoId,    text: '4. Clique + pour d\u00e9composer TES corv\u00e9es en micro-t\u00e2ches',                         position: 4, notes: '', doneAt: null },
+      { id: uid(), listId: _onboardId, text: 'Choisir une seule surface \u00e0 vider',                                                     position: 0, notes: '', doneAt: null },
+      { id: uid(), listId: _onboardId, text: 'Poser un sac poubelle \u00e0 c\u00f4t\u00e9',                                                position: 1, notes: '', doneAt: null },
+      { id: uid(), listId: _onboardId, text: 'Jeter les d\u00e9chets visibles',                                                            position: 2, notes: '', doneAt: null },
+      { id: uid(), listId: _onboardId, text: 'Mettre les objets \u00e0 garder dans une bo\u00eete',                                         position: 3, notes: '', doneAt: null },
+      { id: uid(), listId: _onboardId, text: 'Essuyer la surface avec un chiffon',                                                        position: 4, notes: '', doneAt: null },
+      { id: uid(), listId: _onboardId, text: 'Jeter le sac poubelle',                                                                    position: 5, notes: '', doneAt: null },
     ],
   };
 
@@ -1538,7 +1593,7 @@ const DnD = (() => {
       pointer-events: none;
       z-index: 10000;
       box-shadow: var(--shadow);
-      will-change: transform;
+      will-change: left, top;
     `;
     if (cfg.ghostClass) ghost.classList.add(cfg.ghostClass);
     document.body.appendChild(ghost);
@@ -1554,7 +1609,7 @@ const DnD = (() => {
   function syncPlaceholder(x, y) {
     const zone = cfg.getZone(x, y);
     if (!zone) {
-      if (ph.parentNode) { ph.remove(); lastPos = null; }
+      lastPos = null;
       return;
     }
     const after = cfg.getAfter(zone.container, x, y, ghostEl);
@@ -1572,27 +1627,26 @@ const DnD = (() => {
     if (!started && Math.hypot(dx, dy) < THRESHOLD) return;
     if (!started) startDrag();
 
-    const gx = e.clientX - offsetX;
-    const gy = e.clientY - offsetY;
-    ghost.style.transform = `translate(${gx}px, ${gy}px)`;
+    ghost.style.left = (e.clientX - offsetX) + 'px';
+    ghost.style.top  = (e.clientY - offsetY) + 'px';
     syncPlaceholder(e.clientX, e.clientY);
 
     if (lastPos && lastPos.container) {
       const r = lastPos.container.getBoundingClientRect();
-      const distTop = e.clientY - r.top;
-      const distBot = r.bottom - e.clientY;
-      if (distTop < SCROLL_EDGE && distTop > 0) {
+      const distLeft  = e.clientX - r.left;
+      const distRight = r.right - e.clientX;
+      const distTop   = e.clientY - r.top;
+      const distBot   = r.bottom - e.clientY;
+      let sx = 0, sy = 0;
+      if (distLeft < SCROLL_EDGE && distLeft > 0)  sx = -Math.max(1, (SCROLL_EDGE - distLeft) / 2);
+      else if (distRight < SCROLL_EDGE && distRight > 0) sx =  Math.max(1, (SCROLL_EDGE - distRight) / 2);
+      if (distTop < SCROLL_EDGE && distTop > 0)     sy = -Math.max(1, (SCROLL_EDGE - distTop) / 2);
+      else if (distBot < SCROLL_EDGE && distBot > 0) sy =  Math.max(1, (SCROLL_EDGE - distBot) / 2);
+      if (sx !== 0 || sy !== 0) {
         stopAutoScroll();
-        const speed = Math.max(1, (SCROLL_EDGE - distTop) / 2);
+        const container = lastPos.container;
         _scrollRaf = requestAnimationFrame(function scroll() {
-          lastPos.container.scrollBy({ top: -speed, behavior: 'auto' });
-          _scrollRaf = requestAnimationFrame(scroll);
-        });
-      } else if (distBot < SCROLL_EDGE && distBot > 0) {
-        stopAutoScroll();
-        const speed = Math.max(1, (SCROLL_EDGE - distBot) / 2);
-        _scrollRaf = requestAnimationFrame(function scroll() {
-          lastPos.container.scrollBy({ top: speed, behavior: 'auto' });
+          container.scrollBy({ left: sx, top: sy, behavior: 'auto' });
           _scrollRaf = requestAnimationFrame(scroll);
         });
       } else {
@@ -1672,6 +1726,60 @@ const App = (() => {
   const headerInfoEl   = document.getElementById('headerInfo');
   const Theme           = window.__themeAPI;
 
+  const QUOTES = [
+    "Chaque micro-t\u00e2che termin\u00e9e est une victoire",
+    "Tu n\u2019as pas besoin d\u2019\u00eatre parfait\u00b7e, juste de commencer",
+    "Une micro-t\u00e2che vaut plus qu\u2019une non-action",
+    "La procrastination n\u2019est pas de la paresse, c\u2019est de l\u2019anxi\u00e9t\u00e9",
+    "Viser l\u2019excellence c\u2019est ok, viser la perfection, c\u2019est \u00e9touffer l\u2019\u00e9lan",
+    "Fais-le mal, mais fais-le maintenant (tu am\u00e9lioreras apr\u00e8s)",
+    "Commence petit\u00a0: l\u2019\u00e9lan fait le reste",
+    "Si c\u2019est trop gros, d\u00e9coupe jusqu\u2019\u00e0 ce que \u00e7a fasse moins peur",
+    "Ce que tu \u00e9vites te co\u00fbte plus que ce que tu fais",
+    "Deux minutes suffisent pour d\u00e9bloquer une heure",
+    "Tu n\u2019as pas besoin d\u2019avoir envie\u00a0: tu as juste besoin d\u2019un premier pas",
+    "Aujourd\u2019hui, vise le faisable \u2014 pas l\u2019id\u00e9al",
+    "Un brouillon honn\u00eate vaut mieux qu\u2019un plan parfait",
+    "Ton futur toi te remercie pour 10 minutes, pas pour 0",
+    "Fais la version 1\u00a0: la version 2 existe gr\u00e2ce \u00e0 elle",
+    "La clart\u00e9 vient en faisant, pas en r\u00e9fl\u00e9chissant plus",
+    "Quand tu bloques, rends la t\u00e2che plus simple, pas ta valeur plus petite",
+    "Respire\u00a0: tu peux avancer sans te violenter",
+    "Tu as le droit de faire lentement ce que tu veux faire durablement",
+    "Une action imparfaite bat une intention parfaite",
+    "Ton \u00e9nergie est une ressource\u00a0: prot\u00e8ge-la, organise-la, respecte-la",
+    "La discipline bienveillante, c\u2019est se tenir la main, pas se tenir la gorge",
+    "Tu n\u2019es pas en retard\u00a0: tu es en chemin",
+    "R\u00e9duis la friction\u00a0: pr\u00e9pare le terrain, puis fais un pas",
+    "Fais d\u2019abord le prochain geste, pas tout le projet",
+    "D\u00e9l\u00e9guer, c\u2019est aussi prendre soin de la mission et de toi",
+    "Si tu n\u2019as que 30%, donne 30%\u00a0: c\u2019est d\u00e9j\u00e0 complet pour aujourd\u2019hui",
+    "Le progr\u00e8s silencieux compte aussi",
+    "Choisis une priorit\u00e9\u00a0: tout faire est une forme de procrastination",
+    "Tu m\u00e9rites un rythme qui te respecte autant que tes objectifs",
+    "Tu ne manques pas de temps\u00a0: tu fuis une \u00e9motion",
+    "Arr\u00eate de te demander si tu en as envie. Fais juste le prochain geste",
+    "La motivation vient apr\u00e8s l\u2019action, pas avant",
+    "Si tu attends d\u2019\u00eatre pr\u00eat\u00b7e, tu attends pour rien",
+    "Ton cerveau n\u00e9gocie. Toi, tu avances",
+    "Fais-le maintenant\u00a0: ton futur toi n\u2019a pas sign\u00e9 pour r\u00e9parer \u00e7a",
+    "Tu n\u2019es pas bloqu\u00e9\u00b7e\u00a0: tu es en train d\u2019\u00e9viter",
+    "La perfection n\u2019est pas une exigence\u00a0: c\u2019est une excuse bien habill\u00e9e",
+    "D\u00e9cide. Puis ex\u00e9cute. Pas l\u2019inverse",
+    "Une t\u00e2che faite \u00e0 60% vaut 100% de libert\u00e9",
+    "Tu peux souffrir 10 minutes maintenant, ou 10 fois plus apr\u00e8s",
+    "C\u2019est inconfortable, pas dangereux",
+    "Ton \u00ab\u00a0plus tard\u00a0\u00bb est un mensonge poli",
+    "Ne pense pas. Lance",
+    "Si c\u2019est important, \u00e7a m\u00e9rite une action, pas une rumination",
+    "Tu veux de la paix\u00a0? Paie-la en 5 minutes d\u2019action",
+    "Ce que tu \u00e9vites te contr\u00f4le",
+    "La clart\u00e9 n\u2019arrive pas\u00a0: tu la fabriques en faisant",
+    "Commence avant de te respecter\u00a0: le respect vient avec le mouvement",
+    "Tu n\u2019as pas besoin d\u2019un plan parfait\u00a0: tu as besoin d\u2019un point de d\u00e9part",
+  ];
+  let _quoteIdx = Math.floor(Math.random() * QUOTES.length);
+
   // ── Helpers ──────────────────────────────────────────────
   function make(tag, className) {
     const e = document.createElement(tag);
@@ -1697,9 +1805,23 @@ const App = (() => {
     const s = readStreak();
     const today = new Date().toISOString().slice(0, 10);
     if (s.todayDate === today && s.todayCount > 0) {
-      infoHTML += ` \u00b7 <span class="today-count">${s.todayCount} aujourd\u2019hui</span>`;
+      let emoji;
+      if (s.todayCount >= 20) emoji = '\u{1F4AA}';
+      else if (s.todayCount >= 10) emoji = '\u{1F680}';
+      else if (s.todayCount >= 5) emoji = '\u{1F525}';
+      else if (s.todayCount >= 3) emoji = '\u26A1';
+      else emoji = '\u{1F44D}';
+      infoHTML += ` \u00b7 <span class="today-count">${emoji} ${s.todayCount}</span>`;
     }
     headerInfoEl.innerHTML = infoHTML;
+    if (_todayPop) {
+      _todayPop = false;
+      const tcEl = headerInfoEl.querySelector('.today-count');
+      if (tcEl) {
+        tcEl.classList.add('pop');
+        tcEl.addEventListener('animationend', () => tcEl.classList.remove('pop'), { once: true });
+      }
+    }
 
     const pct = total ? Math.round(done / total * 100) : 0;
     const fill = document.getElementById('progressFill');
@@ -1707,19 +1829,29 @@ const App = (() => {
     fill.style.opacity  = pct / 100;
     document.getElementById('progressPct').textContent = pct + '%';
 
+    if (pct === 100) fireConfetti();
+    else _confettiDone = false;
+
     const badge = document.getElementById('streakBadge');
-    if (s.streak >= 2) {
+    if (s.streak >= 1) {
       badge.textContent = '\uD83D\uDD25 ' + s.streak;
-      badge.title = s.streak + ' jours cons\u00e9cutifs avec au moins une t\u00e2che termin\u00e9e';
+      badge.title = s.streak + ' jour' + (s.streak > 1 ? 's' : '') + ' cons\u00e9cutif' + (s.streak > 1 ? 's' : '') + ' avec au moins une t\u00e2che termin\u00e9e';
       badge.classList.add('show');
       if (s.lastDate !== today) badge.classList.add('paused');
       else badge.classList.remove('paused');
     } else {
       badge.classList.remove('show', 'paused');
     }
+
+    const quoteEl = document.getElementById('boardQuote');
+    if (quoteEl) {
+      quoteEl.textContent = '\uD83C\uDF31 ' + QUOTES[_quoteIdx];
+      _quoteIdx = (_quoteIdx + 1) % QUOTES.length;
+    }
   }
 
   const STREAK_KEY = 'kanbanjs:streak';
+  let _todayPop = false;
 
   function readStreak() {
     try {
@@ -1744,7 +1876,18 @@ const App = (() => {
     } else {
       s.todayCount += increment;
     }
+    _todayPop = true;
     writeStreak(s);
+  }
+
+  function adjustStreak(delta) {
+    if (delta >= 0) return;
+    const s = readStreak();
+    const today = new Date().toISOString().slice(0, 10);
+    if (s.todayDate === today) {
+      s.todayCount = Math.max(0, s.todayCount + delta);
+      writeStreak(s);
+    }
   }
 
   function pulseProgress() {
@@ -1752,6 +1895,68 @@ const App = (() => {
     fill.classList.remove('pulse');
     void fill.offsetWidth;
     fill.classList.add('pulse');
+  }
+
+  let _confettiDone = false;
+
+  function fireConfetti() {
+    if (_confettiDone) return;
+    _confettiDone = true;
+    const canvas = make('canvas');
+    canvas.id = 'confettiCanvas';
+    canvas.style.cssText = 'position:fixed;inset:0;z-index:30000;pointer-events:none';
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    document.body.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    const colors = ['#e8a85a','#f0c070','#f5d890','#ffdc73','#58a6ff','#5ecf9a','#f7768e','#bbb'];
+    const particles = [];
+    for (let i = 0; i < 150; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height * 0.3 - 20,
+        w: 6 + Math.random() * 6,
+        h: 3 + Math.random() * 5,
+        vx: (Math.random() - 0.5) * 6,
+        vy: 2 + Math.random() * 5,
+        rot: Math.random() * 360,
+        rotV: (Math.random() - 0.5) * 12,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        alpha: 1,
+        decay: 0.004 + Math.random() * 0.006,
+      });
+    }
+
+    let start = performance.now();
+    function frame(now) {
+      const elapsed = now - start;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let alive = 0;
+      for (const p of particles) {
+        p.x += p.vx;
+        p.vy += 0.12;
+        p.y += p.vy;
+        p.rot += p.rotV;
+        p.alpha -= p.decay;
+        if (p.alpha <= 0) continue;
+        alive++;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot * Math.PI / 180);
+        ctx.globalAlpha = Math.max(0, p.alpha);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      }
+      if (alive > 0 && elapsed < 4000) {
+        requestAnimationFrame(frame);
+      } else {
+        canvas.remove();
+        if (elapsed < 4000) _confettiDone = false;
+      }
+    }
+    requestAnimationFrame(frame);
   }
 
   async function refreshCountBadge(listId) {
@@ -1832,8 +2037,10 @@ const App = (() => {
 
   // ── Undo / Redo ──────────────────────────────────────────
   const MAX_UNDO = 30;
-  const UK = 'kanbanjs:undo';
-  const RK = 'kanbanjs:redo';
+  const UK  = 'kanbanjs:undo';
+  const RK  = 'kanbanjs:redo';
+  const UKS = 'kanbanjs:undo-streak';
+  const RKS = 'kanbanjs:redo-streak';
 
   function _loadStack(key) {
     try { return JSON.parse(sessionStorage.getItem(key)) || []; } catch (_) { return []; }
@@ -1843,34 +2050,54 @@ const App = (() => {
   async function _snapshot() {
     const json = await DB.exportJSON();
     if (json.length > 200_000) return;
-    const undo = _loadStack(UK);
+    const undo  = _loadStack(UK);
+    const undoS = _loadStack(UKS);
     undo.push(json);
-    if (undo.length > MAX_UNDO) undo.shift();
+    undoS.push(localStorage.getItem(STREAK_KEY) || null);
+    if (undo.length > MAX_UNDO) { undo.shift(); undoS.shift(); }
     _saveStack(UK, undo);
+    _saveStack(UKS, undoS);
     _saveStack(RK, []);
+    _saveStack(RKS, []);
   }
 
   async function mutate(fn) { await _snapshot(); return await fn(); }
 
   async function _undo() {
-    const undo = _loadStack(UK);
+    const undo  = _loadStack(UK);
+    const undoS = _loadStack(UKS);
     if (!undo.length) return;
-    const redo = _loadStack(RK);
+    const redo  = _loadStack(RK);
+    const redoS = _loadStack(RKS);
     redo.push(await DB.exportJSON());
+    redoS.push(localStorage.getItem(STREAK_KEY) || null);
     _saveStack(RK, redo);
+    _saveStack(RKS, redoS);
+    const streakJson = undoS.pop();
+    if (streakJson) localStorage.setItem(STREAK_KEY, streakJson);
+    else localStorage.removeItem(STREAK_KEY);
     await DB.restoreJSON(undo.pop());
     _saveStack(UK, undo);
+    _saveStack(UKS, undoS);
     await _rebuild();
   }
 
   async function _redo() {
-    const redo = _loadStack(RK);
+    const redo  = _loadStack(RK);
+    const redoS = _loadStack(RKS);
     if (!redo.length) return;
-    const undo = _loadStack(UK);
+    const undo  = _loadStack(UK);
+    const undoS = _loadStack(UKS);
     undo.push(await DB.exportJSON());
+    undoS.push(localStorage.getItem(STREAK_KEY) || null);
     _saveStack(UK, undo);
+    _saveStack(UKS, undoS);
+    const streakJson = redoS.pop();
+    if (streakJson) localStorage.setItem(STREAK_KEY, streakJson);
+    else localStorage.removeItem(STREAK_KEY);
     await DB.restoreJSON(redo.pop());
     _saveStack(RK, redo);
+    _saveStack(RKS, redoS);
     await _rebuild();
   }
 
@@ -1881,8 +2108,10 @@ const App = (() => {
   function buildCard(card, done) {
     const wrap = make('div', 'card');
     if (done) wrap.classList.add('card-done');
+    if (card.notes) wrap.classList.add('has-notes');
     wrap.dataset.id     = card.id;
     wrap.dataset.listId = card.listId;
+    if (card.doneAt) wrap.dataset.doneAt = card.doneAt;
 
     const textEl = make('div', 'card-text');
     textEl.textContent = card.text;
@@ -1955,6 +2184,7 @@ const App = (() => {
       const notes = notesEl.value;
       await mutate(() => DB.updateCardNotes(card.id, notes));
       card.notes = notes;
+      wrap.classList.toggle('has-notes', !!notes);
     }
 
     editor.addEventListener('blur',    () => saveEdit());
@@ -1973,6 +2203,12 @@ const App = (() => {
 
     delBtn.addEventListener('click', async e => {
       e.stopPropagation();
+      if (wrap.classList.contains('card-done')) {
+        const doneAt = wrap.dataset.doneAt;
+        if (doneAt && doneAt.slice(0, 10) === new Date().toISOString().slice(0, 10)) {
+          adjustStreak(-1);
+        }
+      }
       await mutate(() => DB.deleteCard(card.id));
       if (_selCard === wrap) _selCard = null;
       const currentListId = wrap.dataset.listId;
@@ -2043,9 +2279,15 @@ const App = (() => {
       if (now) {
         updateStreak();
         pulseProgress();
+        wrap.dataset.doneAt = now;
         const atEl = wrap.querySelector('.card-done-at');
         if (atEl) atEl.textContent = formatDoneAt(now);
       } else if (!isDestDone && wasDone) {
+        const prevDoneAt = wrap.dataset.doneAt;
+        if (prevDoneAt && prevDoneAt.slice(0, 10) === new Date().toISOString().slice(0, 10)) {
+          adjustStreak(-1);
+        }
+        delete wrap.dataset.doneAt;
         const atEl = wrap.querySelector('.card-done-at');
         if (atEl) atEl.textContent = '';
       }
@@ -2189,17 +2431,23 @@ const App = (() => {
       wrap.dataset.done = updated.done ? 'true' : 'false';
       doneToggle.dataset.done = updated.done ? 'true' : 'false';
       doneToggle.classList.toggle('active', updated.done);
+      const todayDate = new Date().toISOString().slice(0, 10);
+      const newDone = willBeDone ? [...cardsEl.querySelectorAll('.card:not(.card-done)')].length : 0;
       cardsEl.querySelectorAll('.card').forEach(c => {
         c.classList.toggle('card-done', updated.done);
         const atEl = c.querySelector('.card-done-at');
         if (updated.done && now) {
+          c.dataset.doneAt = now;
           if (atEl) atEl.textContent = formatDoneAt(now);
         } else {
+          if (c.dataset.doneAt && c.dataset.doneAt.slice(0, 10) === todayDate) {
+            adjustStreak(-1);
+          }
+          delete c.dataset.doneAt;
           if (atEl) atEl.textContent = '';
         }
       });
       if (willBeDone && now) {
-        const newDone = [...cardsEl.querySelectorAll('.card:not(.card-done)')].length;
         if (newDone > 0) updateStreak(newDone);
         pulseProgress();
       }
@@ -2977,7 +3225,14 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
   }
 
   function newCardAtSel() {
-    if (!_selList || !_selList.isConnected) return;
+    if (!_selList || !_selList.isConnected) {
+      const backlog = [...boardEl.querySelectorAll('.list')].find(l => {
+        const t = l.querySelector('.list-title');
+        return t && t.textContent.toLowerCase() === 'backlog';
+      });
+      if (backlog) { selectList(backlog); _selList = backlog; }
+      else return;
+    }
     const btn = _selList.querySelector('.btn-add-card');
     if (btn) btn.click();
   }
@@ -2996,6 +3251,10 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     const toListId  = doneList.dataset.id;
     const sourceListId = card.dataset.listId;
     if (sourceListId === toListId) return;
+    const sourceListEl = card.closest('.list');
+    const nextCard = card.nextElementSibling && card.nextElementSibling.matches('.card')
+      ? card.nextElementSibling : (card.previousElementSibling && card.previousElementSibling.matches('.card')
+        ? card.previousElementSibling : null);
     const cardsEl   = doneList.querySelector('.cards');
     const newPos    = cardsEl.querySelectorAll('.card').length;
     const now = new Date().toISOString();
@@ -3006,6 +3265,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     card.dataset.listId = toListId;
     cardsEl.appendChild(card);
     card.classList.add('card-done');
+    card.dataset.doneAt = now;
     const atEl = card.querySelector('.card-done-at');
     if (atEl) atEl.textContent = formatDoneAt(now);
     updateStreak();
@@ -3013,7 +3273,8 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     if (sourceListId !== toListId) await refreshCountBadge(sourceListId);
     await refreshCountBadge(toListId);
     await refreshHeaderInfo();
-    selectCard(card);
+    if (nextCard) selectCard(nextCard);
+    else if (sourceListEl && sourceListEl.isConnected) { selectCard(null); selectList(sourceListEl); }
   }
 
   async function cutCard() {
@@ -3128,6 +3389,13 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     if (btns[1]) btns[1].click();
   }
 
+  function _toggleAllNotes() {
+    const els = [...boardEl.querySelectorAll('.card-notes')].filter(el => el.value.trim());
+    if (!els.length) return;
+    const allOpen = els.every(el => el.classList.contains('open'));
+    els.forEach(el => el.classList.toggle('open', !allOpen));
+  }
+
   function focusList(n) {
     const lists = [...boardEl.querySelectorAll('.list')];
     const el = lists[n - 1];
@@ -3148,10 +3416,11 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     l:      { fn: nextList,     when: () => !_inInput() },
     j:      { fn: nextCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
     k:      { fn: prevCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
-    n:      { fn: newCardAtSel, when: () => _selList && _selList.isConnected && !_inInput() },
+    n:      { fn: newCardAtSel, when: () => !_inInput() && ((_selList && _selList.isConnected) || [...boardEl.querySelectorAll('.list')].some(l => { const t = l.querySelector('.list-title'); return t && t.textContent.toLowerCase() === 'backlog'; })) },
     r:      { fn: _renameCard,  when: () => _selCard && _selCard.isConnected && !_inInput() },
     d:      { fn: _doneCard,    when: () => _selCard && _selCard.isConnected && !_inInput() },
     e:      { fn: _openNotes,   when: () => _selCard && _selCard.isConnected && !_inInput() },
+    E:      { fn: _toggleAllNotes, when: () => !_inInput() },
     x:      { fn: cutCard,      when: () => _selCard && _selCard.isConnected && !_inInput() },
     y:      { fn: copyCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
     u:      { fn: _undo,        when: () => _undoSize() && !_inInput() },
@@ -3223,6 +3492,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       [['r'],     'Renommer'],
       [['d'],     'Marquer termin\u00E9e'],
       [['e'],     'Ouvrir les notes'],
+      [['E'],     'Plier/D\u00E9plier toutes les notes'],
       [['x'],     'Couper'],
       [['y'],     'Copier'],
       [['p'],     'Coller'],
