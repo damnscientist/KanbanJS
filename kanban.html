@@ -1051,7 +1051,6 @@
       .card, .list { animation: none; }
       .progress-fill { transition: none; }
       .fab { transition: none; }
-      .mobile-toolbar, .header-menu-sheet { animation: none; }
     }
   </style>
 </head>
@@ -1169,8 +1168,6 @@
       </div>
     </div>
   </div>
-  <button class="fab" id="decomposeFab" title="Décomposer une tâche (IA)">+</button>
-
   <div id="board"></div>
 </div>
 
@@ -1478,6 +1475,7 @@ const DB = (() => {
    ============================================================ */
 const DnD = (() => {
   const THRESHOLD = 4;
+  const SCROLL_EDGE = 40;
 
   // Runtime
   let dragEl   = null;
@@ -1492,14 +1490,20 @@ const DnD = (() => {
   let cfg      = null;
   let pointerId= null;
   let _ctxMenu = null;
+  let _scrollRaf = null;
+
+  function stopAutoScroll() {
+    if (_scrollRaf) { cancelAnimationFrame(_scrollRaf); _scrollRaf = null; }
+  }
 
   function cleanup() {
     if (dragEl && pointerId != null) {
       try { dragEl.releasePointerCapture(pointerId); } catch (_) {}
     }
     if (ghost)  { ghost.remove(); ghost = null; }
-    if (ph)     { ph.remove();    ph = null; }
+    if (ph)     { if (ph.parentNode) ph.remove(); ph = null; }
     if (_ctxMenu) { document.removeEventListener('contextmenu', _ctxMenu); _ctxMenu = null; }
+    stopAutoScroll();
     document.removeEventListener('pointermove', onMove);
     document.removeEventListener('pointerup',   onUp);
     document.removeEventListener('pointercancel', onCancel);
@@ -1534,7 +1538,7 @@ const DnD = (() => {
       pointer-events: none;
       z-index: 10000;
       box-shadow: var(--shadow);
-      will-change: left, top;
+      will-change: transform;
     `;
     if (cfg.ghostClass) ghost.classList.add(cfg.ghostClass);
     document.body.appendChild(ghost);
@@ -1568,9 +1572,33 @@ const DnD = (() => {
     if (!started && Math.hypot(dx, dy) < THRESHOLD) return;
     if (!started) startDrag();
 
-    ghost.style.left = (e.clientX - offsetX) + 'px';
-    ghost.style.top  = (e.clientY - offsetY) + 'px';
+    const gx = e.clientX - offsetX;
+    const gy = e.clientY - offsetY;
+    ghost.style.transform = `translate(${gx}px, ${gy}px)`;
     syncPlaceholder(e.clientX, e.clientY);
+
+    if (lastPos && lastPos.container) {
+      const r = lastPos.container.getBoundingClientRect();
+      const distTop = e.clientY - r.top;
+      const distBot = r.bottom - e.clientY;
+      if (distTop < SCROLL_EDGE && distTop > 0) {
+        stopAutoScroll();
+        const speed = Math.max(1, (SCROLL_EDGE - distTop) / 2);
+        _scrollRaf = requestAnimationFrame(function scroll() {
+          lastPos.container.scrollBy({ top: -speed, behavior: 'auto' });
+          _scrollRaf = requestAnimationFrame(scroll);
+        });
+      } else if (distBot < SCROLL_EDGE && distBot > 0) {
+        stopAutoScroll();
+        const speed = Math.max(1, (SCROLL_EDGE - distBot) / 2);
+        _scrollRaf = requestAnimationFrame(function scroll() {
+          lastPos.container.scrollBy({ top: speed, behavior: 'auto' });
+          _scrollRaf = requestAnimationFrame(scroll);
+        });
+      } else {
+        stopAutoScroll();
+      }
+    }
   }
 
   function onUp(e) {
@@ -1907,10 +1935,10 @@ const App = (() => {
       if (!wrap.classList.contains('editing')) return;
       const text = editor.value.trim();
       if (!text) { exitEdit(); return; }
+      exitEdit();
       await mutate(() => DB.updateCard(card.id, text));
       card.text          = text;
       textEl.textContent = text;
-      exitEdit();
     }
 
     function toggleNotes() {
@@ -2001,21 +2029,23 @@ const App = (() => {
       _zoneCache = null;
       _cardCache = null;
       const sourceListId = wrap.dataset.listId;
-      await mutate(() => DB.moveCard(cardId, toListId, newPos));
-      wrap.dataset.listId = toListId;
       const destListEl = boardEl.querySelector('.list[data-id="' + toListId + '"]');
       const isDestDone = destListEl && destListEl.dataset.done === 'true';
       const wasDone = wrap.classList.contains('card-done');
+      const now = (isDestDone && !wasDone) ? new Date().toISOString() : null;
+      await mutate(async () => {
+        await DB.moveCard(cardId, toListId, newPos);
+        if (now) await DB.setCardDoneAt(cardId, now);
+        else if (!isDestDone && wasDone) await DB.setCardDoneAt(cardId, null);
+      });
+      wrap.dataset.listId = toListId;
       wrap.classList.toggle('card-done', isDestDone);
-      if (isDestDone && !wasDone) {
-        const now = new Date().toISOString();
-        await DB.setCardDoneAt(cardId, now);
+      if (now) {
         updateStreak();
         pulseProgress();
         const atEl = wrap.querySelector('.card-done-at');
         if (atEl) atEl.textContent = formatDoneAt(now);
       } else if (!isDestDone && wasDone) {
-        await DB.setCardDoneAt(cardId, null);
         const atEl = wrap.querySelector('.card-done-at');
         if (atEl) atEl.textContent = '';
       }
@@ -2094,15 +2124,14 @@ const App = (() => {
       titleInput.focus();
       titleInput.select();
     }
-    function exitRename(save) {
+    async function exitRename(save) {
       if (save) {
         const val = titleInput.value.trim();
         if (val && val !== list.title) {
-          mutate(() => DB.renameList(list.id, val)).then(() => {
-            list.title = val;
-            titleSpan.textContent = val;
-            refreshCountBadge(list.id);
-          });
+          await mutate(() => DB.renameList(list.id, val));
+          list.title = val;
+          titleSpan.textContent = val;
+          refreshCountBadge(list.id);
         } else {
           titleSpan.textContent = list.title;
         }
@@ -2170,7 +2199,8 @@ const App = (() => {
         }
       });
       if (willBeDone && now) {
-        updateStreak(cardsEl.children.length);
+        const newDone = [...cardsEl.querySelectorAll('.card:not(.card-done)')].length;
+        if (newDone > 0) updateStreak(newDone);
         pulseProgress();
       }
       await refreshCountBadge(list.id);
@@ -2379,7 +2409,7 @@ const App = (() => {
     const raw = await DB.exportJSON();
     const blob = new Blob([raw], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
+    const a    = make('a');
     a.href     = url;
     a.download = 'kanbanjs-' + new Date().toISOString().slice(0, 10) + '.json';
     a.style.display = 'none';
@@ -2968,12 +2998,14 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     if (sourceListId === toListId) return;
     const cardsEl   = doneList.querySelector('.cards');
     const newPos    = cardsEl.querySelectorAll('.card').length;
-    await mutate(() => DB.moveCard(cardId, toListId, newPos));
+    const now = new Date().toISOString();
+    await mutate(async () => {
+      await DB.moveCard(cardId, toListId, newPos);
+      await DB.setCardDoneAt(cardId, now);
+    });
     card.dataset.listId = toListId;
     cardsEl.appendChild(card);
     card.classList.add('card-done');
-    const now = new Date().toISOString();
-    await DB.setCardDoneAt(cardId, now);
     const atEl = card.querySelector('.card-done-at');
     if (atEl) atEl.textContent = formatDoneAt(now);
     updateStreak();
@@ -3162,14 +3194,14 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
     function rows(section, pairs) {
       const frag = document.createDocumentFragment();
-      const h3 = document.createElement('h3');
+      const h3 = make('h3');
       h3.textContent = section;
       frag.appendChild(h3);
       for (const [keys, desc] of pairs) {
         const row    = make('div', 'row');
         const keysEl = make('span', 'keys');
         keys.forEach(k => {
-          const kbd = document.createElement('kbd');
+          const kbd = make('kbd');
           kbd.textContent = k;
           keysEl.appendChild(kbd);
         });
@@ -3207,7 +3239,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     cols.append(colA, colB);
 
     const intro = make('div', 'cheatsheet-intro');
-    const h3 = document.createElement('h3');
+    const h3 = make('h3');
     h3.textContent = 'Kanban anti-procrastination';
     intro.appendChild(h3);
     for (const [action, desc] of [
@@ -3219,7 +3251,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     ]) {
       const row  = make('div', 'row');
       const keys = make('span', 'keys');
-      const kbd  = document.createElement('kbd');
+      const kbd  = make('kbd');
       kbd.textContent = action;
       keys.appendChild(kbd);
       const descEl = make('span', 'desc');
