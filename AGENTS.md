@@ -1,6 +1,6 @@
 # KanbanJS — Projet anti-procrastination
 
-Fichier unique `kanban.html` (~3830 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
+Fichier unique `kanban.html` (~3440 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
 
 ## Concept
 
@@ -39,7 +39,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Renommage (clic sur le titre)
 - Suppression (confirmation)
 - Défaut au premier lancement : "Tuto", "Backlog", "In Progress", "Waiting", "Done"
-- Drag & drop souris et tactile pour réordonner horizontalement (DnD générique)
+- Drag & drop souris pour réordonner horizontalement (DnD générique)
 - **Liste "terminé"** : chaque liste a un bouton `✓` qui la marque comme "terminée".
   Les cartes d'une liste "terminée" s'affichent barrées/grissées.
   Par défaut, la liste "Done" est marquée terminée.
@@ -53,9 +53,8 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Édition inline (textarea avec Sauver/Annuler, Enter valide, Escape annule)
 - **Notes** : chaque carte a un bouton `≡` qui ouvre une textarea de note personnelle, sauvegardée au blur
 - Suppression
-- Drag & drop souris et tactile entre listes (ou au sein de la même liste)
+- Drag & drop souris entre listes (ou au sein de la même liste)
 - Drag ghost + placeholder visuel
-- **Mobile** : boutons d'action (✎ ≡ ✕) toujours visibles sur mobile (pas de hover requis)
 
 ### IA (Décomposition)
 - FAB flottant `＋` en bas à droite (passe en `!` rouge si l'API n'est pas configurée)
@@ -89,9 +88,8 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 | `App` | UI Kanban | `init()` boot la session |
 
 ### Mécanique DnD
-- `pointerdown`/`pointermove`/`pointerup` — API unifiée souris + tactile
+- `pointerdown`/`pointermove`/`pointerup` — API unifiée
 - Seuil 4px avant démarrage (évite les faux positifs)
-- **Touch : tap-long 320ms** — sur `pointerType === 'touch'`, le drag ne démarre qu'après 320ms de pression immobile. Si le doigt bouge de plus de 8px avant le délai, l'annulation laisse le scroll natif se produire. Souris et stylet restent immédiats.
 - Ghost : clone de l'élément ou `ghostBuilder` optionnel, fixed, `pointer-events:none`
 - `getZone(x,y)` : itère sur `getBoundingClientRect()` des cibles (pas de `elementFromPoint`)
 - Guard `lastPos` : mutation DOM uniquement si la position a changé
@@ -101,13 +99,10 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 
 ### Design
 - Dark/light mode via `data-theme` sur `<html>` + CSS custom properties
-- Modals : overlay `z-index: 20000` ; **bottom-sheet sur mobile** (`align-items: flex-end`, `border-radius` top-only, `max-height: 90dvh`)
-- FAB : `z-index: 5000`, `position: fixed` bottom-right ; `safe-area-inset-bottom` sur mobile
-- Toolbar contextuelle mobile : `z-index: 8000`, `position: fixed` bottom, visible uniquement sur `≤640px` quand une carte est sélectionnée
-- Menu ⋯ header mobile : `z-index: 19000`, bottom-sheet regroupant les actions secondaires (config, reset, export, import, aide, thème)
+- Modals : overlay `z-index: 20000`, centrées
+- FAB : `z-index: 5000`, `position: fixed` bottom-right
 - 4 thèmes sombres (Warm Night, Deep Ocean, Forest, Tokyo Night) et 4 clairs (Soft Sand, Mint, Lavender, Tokyo Light)
 - Couleurs CSS : `color-mix(in srgb, var(--accent) X%, transparent)` + fallback `rgba(var(--accent-rgb), .X)` pour compatibilité
-- Responsive `≤640px` : `--list-width: 82vw`, `scroll-snap-type: x mandatory`, `overscroll-behavior-x: contain`, `max-height: calc(100dvh - 88px)` sur les listes
 
 ### Limites techniques
 - **Pas de déploiement** — fichier local, provoque des erreurs CORS si ouvert en `file://` (l'API fetch y est bloquée, à servir via un serveur local)
@@ -124,7 +119,6 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Les helpers `toggleForm`, `registerOverlay`, `formatDoneAt`, `extractCardData`, `extractListData`, `removeListDom` sont dans le scope App, juste après `removeListDom`.
 - Le thème est capturé au démarrage de App via `const Theme = window.__themeAPI`. Plus aucun accès à `window.__themeAPI` dans le code métier.
 - `Clipboard` est un objet (plus un `let _clipboard`), méthodes : `copyCard/cutCard/copyList/cutList/paste/clear/isEmpty/type`.
-- `isMobile()` : helper `() => window.matchMedia('(max-width: 640px)').matches` — utilisé par la toolbar contextuelle pour ne s'afficher que sur mobile.
 
 ### Architecture du code
 - L'ordre des modales et du debug suit le flow : config → décompose
@@ -138,12 +132,6 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Les cartes ont un champ `notes` (chaîne) persisté via `updateCardNotes`, éditable inline (textarea toggleable)
 - Les cartes ont un champ `doneAt` (ISO string ou null) stocké automatiquement quand glissées dans une liste "terminée"
 - `refreshHeaderInfo()` et `refreshCountBadge(id)` sont async, lisent les données via DB (pas le DOM)
-- **Éléments mobiles-only** (présents dans le DOM mais masqués sur desktop par CSS) :
-  - `#mobileToolbar` / `.mobile-toolbar` : toolbar contextuelle carte (Modifier/Notes/Terminer/Supprimer)
-  - `#headerMenuOverlay` / `.header-menu-overlay` : bottom-sheet menu ⋯ (config, thème, aide, export, import, reset)
-  - `#searchMobileBtn`, `#headerMenuBtn` : boutons header mobile (.header-menu-btn)
-- `MutationObserver` sur `#board` pour détecter `.card.card-selected:not(.editing)` → affiche/masque la toolbar mobile
-- Le bouton "Terminer" de la toolbar déplace la carte vers la première liste `data-done="true"` trouvée dans le board
 
 ### Convention de code
 - `make(tag, className)` pour créer des éléments
@@ -165,7 +153,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 
 4. **Persistance robuste** — localStorage est fragile (clear navigateur, changement de machine = perte totale). Options : sync fichier local, WebDAV, GitHub Gist, ou au minimum un rappel périodique "Pensez à exporter". L'export JSON existe mais il est manuel.
 5. **Feedback de progression** — La barre de progression existe mais il n'y a pas de gratification quand on termine une tâche. Un micro-feedback (animation, compteur de streak, "5 tâches terminées aujourd'hui") renforcerait la boucle motivationnelle — c'est central pour un outil anti-procrastination. ✅ **Streak + pulse + compteur du jour** implémentés.
-6. **UX mobile** — Le responsive existe mais les raccourcis clavier (cœur de l'UX power-user) disparaissent sur mobile. Repenser le pattern mobile avec des gestes ou des boutons d'action rapide pour "ouvrir, décomposer, cocher". ✅ **Refonte mobile** : toolbar contextuelle, menu ⋯, DnD tap-long, scroll-snap, bottom-sheets.
+6. **UX mobile** — L'outil est conçu pour le desktop (raccourcis clavier, drag & drop souris). Une version « companion de poche » (spécifiée dans `companion.md`) permettrait de capturer des idées rapides sur mobile sans la complexité du kanban complet. La capture se fait sur mobile, l'exécution sur desktop.
 
 ### P2 — Nice to have
 
@@ -174,6 +162,13 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 9. **Mode offline complet** — Service worker pour un fonctionnement 100% hors-ligne, cohérent avec la philosophie zéro-dépendance.
 
 ## Changelog
+
+### 2026-07-01 — Suppression de la couche UX mobile
+- **Décision stratégique** : un outil anti-procrastination ne doit pas se faire sur mobile. Le kanban complet est une expérience desktop. Pour la capture rapide, voir `companion.md`.
+- **CSS** : suppression du bloc `@media (max-width: 640px)` (~185 lignes), des classes `.mobile-toolbar`, `.header-menu-overlay`, `.header-menu-btn`, de `@keyframes slideUp`, de `touch-action: none` sur `.card`/`.list-header`/`.dnd-ghost-list`, de `-webkit-user-select` et `-webkit-touch-callout`.
+- **HTML** : suppression de `#mobileToolbar`, `#headerMenuOverlay`, `#headerMenuBtn`, `#searchMobileBtn`, des classes `.header-desktop-only` et `.header-menu-btn`, des attributs `enterkeyhint`/`inputmode`.
+- **JS** : suppression de `isMobile()`, des handlers mobile (recherche, menu ⋯, toolbar contextuelle, `MutationObserver`, `visualViewport.resize`), de la détection double-tap sur les titres, de la branche touch du DnD (tap-long 200ms, edge-scroll, `_touchDrag`, `webkitUserSelect`). `selectCard()` simplifié (plus de branche `isMobile`). `DnD.start()` simplifié (comportement souris uniquement).
+- **Fichier** : 4024 → 3438 lignes (-586, -14.5%)
 
 ### 2026-06-29 — Correctifs mobile (post-refonte)
 - **`touch-action: auto` annulé** : la tentative de passer les `.card` et `.list-header` en `touch-action: auto` sur mobile cassait le DnD. Le `e.preventDefault()` appelé dans `beginCapture()` arrive 200ms après le `pointerdown` — trop tard, le navigateur a déjà pris la main sur le scroll. Le DnD repose sur `touch-action: none` CSS (le navigateur ne scroll jamais sur les cartes, le JS gère tout). Le tap-long à 200ms est conservé pour laisser un délai entre le touch et l'activation du drag.
@@ -270,7 +265,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Debug panel : couleurs → variables de thème (`--surface-2`, `--text`, `--accent`, `--danger`).
 - Ghost DnD : `box-shadow: 0 8px 32px rgba(0,0,0,.6)` → `box-shadow: var(--shadow)`.
 - `.cfg-status.success` : `#2ecc71` → `var(--accent)`.
-- Responsive : `.cheatsheet-intro` masqué, `--list-width` réduit à 260px sur mobile.
+- Responsive : `.cheatsheet-intro` masqué sur petit écran
 - États visuels : `:focus-visible`, `:active`, `:disabled` sur boutons, `cursor: default` sur `.cheatsheet .row`.
 - Fallback `rgba(var(--accent-rgb), .X)` avant chaque `color-mix()` pour les WIP warnings.
 
@@ -313,7 +308,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Sélecteur de thème : 8 variantes (4 sombres, 4 clairs) via onglet dans Configuration.
 - `initTheme` refactoré avec 3 clés (mode/dark/light) et mode système (`prefers-color-scheme`).
 - Abstraction fournisseur IA : switch OpenAI/Anthropic/Google.
-- DnD tactile : `mousedown` → `pointerdown` + `setPointerCapture` + `touch-action: none`.
-- Responsive : media query ≤640px, header compact, modales scrollables.
+- DnD : `mousedown` → `pointerdown` + `setPointerCapture`
+- Responsive : media query ≤640px, header compact
 - Export/Import JSON, FAB badge rouge si API non configurée.
 - Tuto : liste avec cartes-exemples dans `DB._default`.
