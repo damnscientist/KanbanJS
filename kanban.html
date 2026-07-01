@@ -571,6 +571,29 @@
       padding: 6px 0 0;
     }
     .card-notes.open { display: block; }
+    .card-notes.preview { display: none; }
+
+    .card-notes-preview {
+      display: none;
+      width: 100%;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.5;
+      margin-top: 4px;
+      padding: 6px 0 0;
+      word-break: break-word;
+    }
+    .card-notes-preview.open { display: block; }
+    .card-notes-preview strong { color: var(--text); }
+    .card-notes-preview em { color: var(--text); font-style: italic; }
+    .card-notes-preview code {
+      background: var(--surface-3);
+      border-radius: 3px;
+      padding: 1px 4px;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 11px;
+    }
 
     .card.card-selected {
       border-color: var(--accent);
@@ -1500,15 +1523,28 @@ const DB = (() => {
     },
 
     // ── Export / Import / Reset ──────────────────────────────
-    async exportJSON()   { return JSON.stringify(_state); },
+    async exportJSON() {
+      let streak = null;
+      try { streak = localStorage.getItem('kanbanjs:streak'); } catch (_) {}
+      return JSON.stringify({ state: _state, streak });
+    },
     async importJSON(json) {
       let parsed;
       try { parsed = JSON.parse(json); } catch (_) { throw new Error('JSON invalide.'); }
-      if (!parsed.board || !Array.isArray(parsed.lists) || !Array.isArray(parsed.cards)) {
+      let state, streak;
+      if (parsed.board && Array.isArray(parsed.lists) && Array.isArray(parsed.cards)) {
+        state = parsed;
+      } else if (parsed.state && parsed.state.board && Array.isArray(parsed.state.lists) && Array.isArray(parsed.state.cards)) {
+        state = parsed.state;
+        streak = parsed.streak;
+      } else {
         throw new Error('Structure invalide (attendu : board, lists, cards).');
       }
-      _state = parsed;
+      _state = state;
       _save();
+      if (streak) {
+        try { localStorage.setItem('kanbanjs:streak', streak); } catch (_) {}
+      }
     },
     async reset() {
       _state = JSON.parse(JSON.stringify(_default));
@@ -1517,10 +1553,13 @@ const DB = (() => {
     async restoreJSON(json) {
       let parsed;
       try { parsed = JSON.parse(json); } catch (_) { return; }
+      let state;
       if (parsed.board && Array.isArray(parsed.lists) && Array.isArray(parsed.cards)) {
-        _state = parsed;
-        _save();
+        state = parsed;
+      } else if (parsed.state && parsed.state.board && Array.isArray(parsed.state.lists) && Array.isArray(parsed.state.cards)) {
+        state = parsed.state;
       }
+      if (state) { _state = state; _save(); }
     },
   };
 })();
@@ -1546,6 +1585,9 @@ const DnD = (() => {
   let pointerId= null;
   let _ctxMenu = null;
   let _scrollRaf = null;
+  let _origParent = null;
+  let _origAfter  = null;
+  let _isCopy     = false;
 
   function stopAutoScroll() {
     if (_scrollRaf) { cancelAnimationFrame(_scrollRaf); _scrollRaf = null; }
@@ -1569,6 +1611,8 @@ const DnD = (() => {
     dropCb  = null;
     cfg     = null;
     pointerId = null;
+    _origParent = _origAfter = null;
+    _isCopy = false;
     document.body.style.userSelect = '';
   }
 
@@ -1581,6 +1625,8 @@ const DnD = (() => {
     _ctxMenu = e => e.preventDefault();
     document.addEventListener('contextmenu', _ctxMenu);
     ghostEl = cfg.ghostEl || dragEl;
+    _origParent = ghostEl.parentNode;
+    _origAfter  = ghostEl.nextSibling;
     const rect = ghostEl.getBoundingClientRect();
 
     ghost = cfg.ghostBuilder ? cfg.ghostBuilder() : ghostEl.cloneNode(true);
@@ -1602,7 +1648,12 @@ const DnD = (() => {
     ph.className = cfg.phClass || 'drop-placeholder';
     ph.style.width  = rect.width  + 'px';
     ph.style.height = rect.height + 'px';
-    ghostEl.replaceWith(ph);
+    if (_isCopy) {
+      _origParent = ghostEl.parentNode;
+      _origAfter  = ghostEl.nextSibling;
+    } else {
+      ghostEl.replaceWith(ph);
+    }
     lastPos = null;
   }
 
@@ -1662,14 +1713,22 @@ const DnD = (() => {
     document.removeEventListener('pointerup',   onUp);
     document.removeEventListener('pointercancel', onCancel);
 
-    if (lastPos && ph.parentNode) {
+    if (_isCopy && lastPos) {
+      const targetId = lastPos.id;
+      const newPos   = ph.parentNode ? cfg.getPos(lastPos.container, ph) : 0;
+      if (ph.parentNode) ph.remove();
+      const cb = dropCb;
+      const id = dragId;
+      cleanup();
+      cb(id, targetId, newPos, true);
+    } else if (lastPos && ph.parentNode) {
       const newPos = cfg.getPos(lastPos.container, ph);
       ph.replaceWith(ghostEl);
       const targetId = lastPos.id;
       const cb = dropCb;
       const id = dragId;
       cleanup();
-      cb(id, targetId, newPos);
+      cb(id, targetId, newPos, false);
     } else {
       ph.replaceWith(ghostEl);
       cleanup();
@@ -1707,6 +1766,7 @@ const DnD = (() => {
       cfg     = options;
       started = false;
       pointerId = e.pointerId;
+      _isCopy   = e.ctrlKey || e.metaKey;
 
       document.addEventListener('pointermove', onMove);
       document.addEventListener('pointerup',   onUp);
@@ -1985,6 +2045,15 @@ const App = (() => {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  function renderMarkdown(text) {
+    let html = esc(text);
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+    html = html.replace(/\n\n/g, '<br><br>');
+    return html;
+  }
+
   function flashMessage(el, msg, cls, ms) {
     if (el._timer) clearTimeout(el._timer);
     el.textContent = msg;
@@ -2121,22 +2190,21 @@ const App = (() => {
 
     // Hover actions
     const actionsEl = make('div', 'card-actions');
-    const editBtn   = make('button', 'btn-icon');
-    editBtn.title       = 'Modifier';
-    editBtn.textContent = '\u270e';
     const notesBtn  = make('button', 'btn-icon');
     notesBtn.title       = 'Notes';
     notesBtn.textContent = '\u2261';
     const delBtn = make('button', 'btn-icon danger');
     delBtn.title       = 'Supprimer';
     delBtn.textContent = '\u2715';
-    actionsEl.append(editBtn, notesBtn, delBtn);
+    actionsEl.append(notesBtn, delBtn);
 
     // Notes
     const notesEl = make('textarea', 'card-notes');
     notesEl.rows = 2;
     notesEl.placeholder = 'Note personnelle\u2026';
     notesEl.value = card.notes || '';
+
+    const notesPreview = make('div', 'card-notes-preview');
 
     // Editor
     const editor = make('textarea', 'card-editor');
@@ -2149,7 +2217,7 @@ const App = (() => {
     cancelBtn.textContent = 'Annuler';
     editorActions.append(saveBtn, cancelBtn);
 
-    wrap.append(textEl, doneAtEl, notesEl, actionsEl, editor, editorActions);
+    wrap.append(textEl, doneAtEl, notesEl, notesPreview, actionsEl, editor, editorActions);
 
     function enterEdit() {
       wrap.classList.add('editing');
@@ -2170,13 +2238,42 @@ const App = (() => {
       textEl.textContent = text;
     }
 
+    function openNotesEdit() {
+      notesPreview.classList.remove('open');
+      notesEl.classList.remove('preview');
+      notesEl.classList.add('open');
+      notesBtn.textContent = '\u270e';
+      notesBtn.title = 'Pr\u00e9visualiser';
+      notesEl.focus();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => autoResize(notesEl));
+      });
+    }
+
+    function openNotesPreview() {
+      notesEl.classList.add('preview');
+      notesEl.classList.remove('open');
+      notesPreview.innerHTML = renderMarkdown(notesEl.value);
+      notesPreview.classList.add('open');
+      notesBtn.textContent = '\u{1F441}';
+      notesBtn.title = 'Fermer';
+    }
+
+    function closeNotes() {
+      notesEl.classList.remove('open', 'preview');
+      notesPreview.classList.remove('open');
+      notesBtn.textContent = '\u2261';
+      notesBtn.title = 'Notes';
+    }
+
     function toggleNotes() {
-      notesEl.classList.toggle('open');
-      if (notesEl.classList.contains('open')) {
-        notesEl.focus();
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => autoResize(notesEl));
-        });
+      if (notesPreview.classList.contains('open')) {
+        closeNotes();
+      } else if (notesEl.classList.contains('open')) {
+        saveNotes();
+        openNotesPreview();
+      } else {
+        openNotesEdit();
       }
     }
 
@@ -2193,11 +2290,11 @@ const App = (() => {
       if (e.key === 'Escape') exitEdit();
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(); }
     });
-    editBtn.addEventListener('click',   e => { e.stopPropagation(); enterEdit(); });
+    wrap.addEventListener('dblclick', e => { if (!e.target.closest('button, textarea')) enterEdit(); });
     notesBtn.addEventListener('click',  e => { e.stopPropagation(); toggleNotes(); });
     notesEl.addEventListener('blur',    () => saveNotes());
     notesEl.addEventListener('input',   () => autoResize(notesEl));
-    notesEl.addEventListener('keydown', e => { if (e.key === 'Escape') { notesEl.classList.remove('open'); notesEl.blur(); } });
+    notesEl.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); saveNotes(); openNotesPreview(); } });
     saveBtn.addEventListener('click',   saveEdit);
     cancelBtn.addEventListener('click', exitEdit);
 
@@ -2261,9 +2358,31 @@ const App = (() => {
       },
       getPos(container, ph) { return [...container.children].indexOf(ph); },
       skip(el) { return el.classList.contains('editing'); },
-    }, async (cardId, toListId, newPos) => {
+    }, async (cardId, toListId, newPos, copy) => {
       _zoneCache = null;
       _cardCache = null;
+      if (copy) {
+        const data = extractCardData(wrap);
+        const destListEl = boardEl.querySelector('.list[data-id="' + toListId + '"]');
+        const isDestDone = destListEl && destListEl.dataset.done === 'true';
+        const card = await mutate(async () => {
+          const c = await DB.createCard(toListId, data.text);
+          await DB.moveCard(c.id, toListId, newPos);
+          if (data.notes) await DB.updateCardNotes(c.id, data.notes);
+          return c;
+        });
+        const destCards = destListEl && destListEl.querySelector('.cards');
+        const cardEl = buildCard(card, isDestDone);
+        if (destCards) {
+          const children = [...destCards.children];
+          const at = children[newPos];
+          if (at) destCards.insertBefore(cardEl, at);
+          else destCards.appendChild(cardEl);
+        }
+        await refreshCountBadge(toListId);
+        await refreshHeaderInfo();
+        return;
+      }
       const sourceListId = wrap.dataset.listId;
       const destListEl = boardEl.querySelector('.list[data-id="' + toListId + '"]');
       const isDestDone = destListEl && destListEl.dataset.done === 'true';
@@ -2677,7 +2796,9 @@ const App = (() => {
       reader.onload = async () => {
         try {
           const data = JSON.parse(reader.result);
-          if (!data.board || !Array.isArray(data.lists) || !Array.isArray(data.cards)) {
+          const hasBoard = (data.board && Array.isArray(data.lists) && Array.isArray(data.cards))
+            || (data.state && data.state.board && Array.isArray(data.state.lists) && Array.isArray(data.state.cards));
+          if (!hasBoard) {
             alert('Fichier invalide : structure JSON attendue (board, lists, cards).');
             return;
           }
@@ -3371,6 +3492,30 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     if (btn) btn.click();
   }
 
+  function collapseList() {
+    if (!_selList || !_selList.isConnected) return;
+    const btn = _selList.querySelector('.btn-icon[title*="Replier"], .btn-icon[title*="D\u00e9plier"]');
+    if (btn) btn.click();
+  }
+
+  async function duplicateCard() {
+    if (!_selCard || !_selCard.isConnected) return;
+    const data = extractCardData(_selCard);
+    const listId = _selCard.dataset.listId;
+    const listEl = _selCard.closest('.list');
+    const done = listEl && listEl.dataset.done === 'true';
+    const card = await mutate(async () => {
+      const c = await DB.createCard(listId, data.text);
+      if (data.notes) await DB.updateCardNotes(c.id, data.notes);
+      return c;
+    });
+    const cardEl = buildCard(card, done);
+    _selCard.after(cardEl);
+    selectCard(cardEl);
+    await refreshCountBadge(listId);
+    await refreshHeaderInfo();
+  }
+
   function renameList() {
     if (!_selList || !_selList.isConnected) return;
     const span = _selList.querySelector('.list-title');
@@ -3379,21 +3524,37 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
   function _renameCard() {
     if (!_selCard || !_selCard.isConnected) return;
-    const btn = _selCard.querySelector('.card-actions .btn-icon');
-    if (btn) btn.click();
+    _selCard.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
   }
 
   function _openNotes() {
     if (!_selCard || !_selCard.isConnected) return;
-    const btns = _selCard.querySelectorAll('.card-actions .btn-icon');
-    if (btns[1]) btns[1].click();
+    const btn = _selCard.querySelector('.card-actions .btn-icon:not(.danger)');
+    if (btn) btn.click();
   }
 
   function _toggleAllNotes() {
     const els = [...boardEl.querySelectorAll('.card-notes')].filter(el => el.value.trim());
     if (!els.length) return;
-    const allOpen = els.every(el => el.classList.contains('open'));
-    els.forEach(el => el.classList.toggle('open', !allOpen));
+    const anyOpen = els.some(el => el.classList.contains('open') || el.classList.contains('preview'));
+    els.forEach(el => {
+      const wrap = el.closest('.card');
+      const previewEl = wrap && wrap.querySelector('.card-notes-preview');
+      if (anyOpen) {
+        el.classList.remove('open', 'preview');
+        if (previewEl) previewEl.classList.remove('open');
+        const btn = wrap && wrap.querySelector('.card-actions .btn-icon[title*="Notes"], .card-actions .btn-icon[title*="Fermer"], .card-actions .btn-icon[title*="Pr\u00e9visualiser"]');
+        if (btn) { btn.textContent = '\u2261'; btn.title = 'Notes'; }
+      } else {
+        el.classList.add('preview');
+        if (previewEl) {
+          previewEl.innerHTML = renderMarkdown(el.value);
+          previewEl.classList.add('open');
+        }
+        const btn = wrap && wrap.querySelector('.card-actions .btn-icon[title="Notes"]');
+        if (btn) { btn.textContent = '\u{1F441}'; btn.title = 'Fermer'; }
+      }
+    });
   }
 
   function focusList(n) {
@@ -3421,7 +3582,8 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     d:      { fn: _doneCard,    when: () => _selCard && _selCard.isConnected && !_inInput() },
     e:      { fn: _openNotes,   when: () => _selCard && _selCard.isConnected && !_inInput() },
     E:      { fn: _toggleAllNotes, when: () => !_inInput() },
-    x:      { fn: cutCard,      when: () => _selCard && _selCard.isConnected && !_inInput() },
+    x:      { fn: cutCard,        when: () => _selCard && _selCard.isConnected && !_inInput() },
+    c:      { fn: duplicateCard,  when: () => _selCard && _selCard.isConnected && !_inInput() },
     y:      { fn: copyCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
     u:      { fn: _undo,        when: () => _undoSize() && !_inInput() },
     p:      { fn: _paste,       when: () => _selList && _selList.isConnected && !Clipboard.isEmpty() && Clipboard.type() === 'card' && !_inInput() },
@@ -3431,9 +3593,11 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     Y:      { fn: copyList,       when: () => _selList && _selList.isConnected && !_inInput() },
     P:      { fn: _paste,         when: () => !Clipboard.isEmpty() && !_inInput() },
     D:      { fn: toggleDoneList, when: () => _selList && _selList.isConnected && !_inInput() },
+    C:      { fn: collapseList,   when: () => _selList && _selList.isConnected && !_inInput() },
     Escape: { fn: () => {
       const cs = document.querySelector('.cheatsheet-overlay.open');
       if (cs) { cs.classList.remove('open'); return; }
+      if (document.querySelector('.card-notes-preview.open')) { _toggleAllNotes(); return; }
       if (_selCard || _selList) clearSelection();
     }, when: () => !_inInput() },
   });
@@ -3493,6 +3657,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       [['d'],     'Marquer termin\u00E9e'],
       [['e'],     'Ouvrir les notes'],
       [['E'],     'Plier/D\u00E9plier toutes les notes'],
+      [['c'],     'Dupliquer'],
       [['x'],     'Couper'],
       [['y'],     'Copier'],
       [['p'],     'Coller'],
@@ -3502,6 +3667,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       [['N'],     'Nouvelle liste'],
       [['R'],     'Renommer'],
       [['D'],     'Marquer termin\u00E9e'],
+      [['C'],     'Replier/D\u00E9plier'],
       [['X'],     'Couper'],
       [['Y'],     'Copier'],
       [['P'],     'Coller'],
@@ -3535,6 +3701,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       [['u'],         'Annuler'],
       [['Ctrl','Y'],  'R\u00E9tablir'],
       [['Ctrl','K'],  'Rechercher une carte'],
+      [['Ctrl','drag'], 'Copier une carte (au lieu de d\u00e9placer)'],
       [['1','9'],     'Focus liste 1 \u00E0 9'],
       [['?'],         'Aide'],
       [['Esc'],       'D\u00E9s\u00E9lectionner'],

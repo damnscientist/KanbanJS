@@ -1,6 +1,6 @@
 # KanbanJS — Projet anti-procrastination
 
-Fichier unique `kanban.html` (~3440 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
+Fichier unique `kanban.html` (~3900 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
 
 ## Concept
 
@@ -25,8 +25,9 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 ### Clavier
 - Raccourcis vim-like : minuscule = carte, majuscule = liste
 - Navigation : `h`/`l` listes ←/→, `j`/`k` cartes ↓/↑, `1-9` focus liste n
-- Actions carte : `n` créer, `r` renommer, `e` ouvrir notes, `x` couper, `y` copier, `p` coller
-- Actions liste : `N` créer, `E` renommer, `D` toggle terminé, `X` couper, `Y` copier, `P` coller
+- Actions carte : `n` créer (fallback Backlog si aucune liste sélectionnée), `r` renommer (dblclick), `e` ouvrir notes (cycle édition→preview→fermé), `c` dupliquer, `x` couper, `y` copier, `p` coller, `d` marquer terminée
+- Actions liste : `N` créer, `R` renommer, `D` toggle terminé, `C` replier/déplier, `X` couper, `Y` copier, `P` coller
+- `E` plier/déplier toutes les notes (preview), `Ctrl+drag` = copier une carte au lieu de déplacer
 - `Esc` désélectionne la carte/liste courante ou ferme l'overlay actif, `?` affiche l'aide clavier
 - Presse-papier unifié : couper/copier une liste copie titre + cartes
 - Sélection visuelle : bordure accent, actions toujours visibles sur carte sélectionnée
@@ -51,7 +52,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 ### Cartes
 - Création inline ("Ajouter une carte" dans chaque liste)
 - Édition inline (textarea avec Sauver/Annuler, Enter valide, Escape annule)
-- **Notes** : chaque carte a un bouton `≡` qui ouvre une textarea de note personnelle, sauvegardée au blur
+- **Notes** : chaque carte a un bouton `≡` qui ouvre une textarea de note personnelle en édition. Cycle 3 états : édition (≡, `e`) → preview markdown (Esc) → fermé (Esc ou ≡). Rendu basique (gras, italique, code inline). Pastille colorée sur les cartes ayant des notes.
 - Suppression
 - Drag & drop souris entre listes (ou au sein de la même liste)
 - Drag ghost + placeholder visuel
@@ -68,9 +69,10 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - **Templates** : 12 templates de corvées universelles intégrés, matching fuzzy sur le texte saisi dans le textarea (💡 "Template suggéré"). Zéro API requise.
 
 ### Persistance
-- `localStorage` avec 3 clés :
+- `localStorage` avec 4 clés :
   - `kanbanjs:state` → board, listes, cartes (reset nettoie uniquement celle-ci)
   - `kanbanjs:config` → provider, endpoint, apiKey, model
+  - `kanbanjs:streak` → `{ streak, lastDate, todayCount, todayDate }` (export/import inclus)
   - Thème (3 clés) :
     - `kanbanjs:theme-mode` → 'dark' | 'light' | 'system'
     - `kanbanjs:theme-dark` → 'warm-night' | 'deep-ocean' | 'forest' | 'tokyo-night'
@@ -147,7 +149,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 
 1. **Hébergement statique** — Déployer sur GitHub Pages / Netlify / Vercel. Le fichier ne fonctionne pas en `file://` (CORS bloque fetch). Sans ça, aucun non-technicien ne peut utiliser l'outil. Alternative : un script shell/batch qui lance un serveur local (`python -m http.server`).
 2. **Supprimer le mur de la clé API** — Demander à un utilisateur lambda de créer un compte OpenAI et coller une clé API est exactement la friction que l'outil est censé éliminer. Options : backend léger qui proxy les appels IA, intégration d'un modèle local (WebLLM / Ollama), ou mode dégradé avec templates de décomposition pré-faits (pas d'IA requise). ✅ **Templates intégrés** — 12 corvées universelles avec matching fuzzy, zero API.
-3. **Onboarding** — La liste "Tuto" est un bon début mais ne montre pas pourquoi c'est différent d'un Trello. Ajouter une première décomposition guidée ("Essayez : ranger mon bureau") qui rend le concept tangible en 30 secondes.
+3. **Onboarding** — La liste "Tuto" est un bon début mais ne montre pas pourquoi c'est différent d'un Trello. Ajouter une première décomposition guidée ("Essayez : ranger mon bureau") qui rend le concept tangible en 30 secondes. ✅ **Onboarding interactif** — Tuto reformulé en consignes actionnables, liste "Ranger une surface" avec 6 micro-tâches d'exemple (template réel) pour un premier drag en <10s.
 
 ### P1 — Utile au quotidien
 
@@ -157,11 +159,23 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 
 ### P2 — Nice to have
 
-7. **Notes markdown** — Rendu basique (gras, italique, listes, code inline) dans la textarea de notes, toggle édition/aperçu (~70-110 LOC).
+7. **Notes markdown** — Rendu basique (gras, italique, code inline). ✅ **Implémenté** — cycle édition/preview/fermé, pastille colorée sur les cartes ayant des notes.
 8. **Tags** — Champ `tags: []` sur les cartes, chips colorés, filtrable via la recherche (~70-85 LOC).
 9. **Mode offline complet** — Service worker pour un fonctionnement 100% hors-ligne, cohérent avec la philosophie zéro-dépendance.
 
 ## Changelog
+
+### 2026-07-01 — Onboarding, streak robuste, notes markdown, UX polie
+- **Onboarding interactif** : Tuto reformulé en 5 cartes actionnables (1, 2, 2a, 3, 4), liste "Ranger une surface" avec 6 micro-tâches d'exemple. Le Backlog reste vide pour l'utilisateur.
+- **Streak robuste** : `adjustStreak(delta)` pour décrémenter quand une carte quitte Done (DnD, toggle liste, suppression). Undo/Redo snapshotte le streak (clés parallèles `*-streak`). Badge visible dès streak ≥ 1. Palier d'emoji journalier (👍⚡🔥🚀💪) avec animation pop.
+- **Confettis à 100%** : canvas overlay avec 150 particules quand la barre atteint 100%.
+- **50 quotes bienveillantes** : affichées en filigrane sur le board (opacité 0.45), rotation à chaque action.
+- **Notes markdown** : cycle édition→preview→fermé (≡, `e`, `Esc`). Rendu `**gras**`, `*italique*`, `` `code` ``. Bouton crayon supprimé, double-clic sur carte pour renommer. Pastille colorée sur les cartes ayant des notes.
+- **Export/Import inclut le streak** : `exportJSON()` wrapper `{state, streak}`, `importJSON()` rétrocompatible.
+- **Raccourcis ajoutés** : `c` dupliquer carte, `C` replier/déplier liste, `Ctrl+drag` copier carte (original reste en place, copie au placeholder).
+- **DnD** : auto-scroll horizontal + vertical (40px des bords), `ph.remove()` corrigé sur élément détaché, ghost en `left`/`top` (pas de conflit `transform`).
+- **Audit bugs** : FAB dupliqué supprimé, `saveEdit` double snapshot corrigé, `setCardDoneAt` wrappé dans `mutate()`, CSS mort nettoyé, `exitRename` async, `document.createElement` → `make()`.
+- **Fichier** : 3438 → ~3900 lignes (+462)
 
 ### 2026-07-01 — Suppression de la couche UX mobile
 - **Décision stratégique** : un outil anti-procrastination ne doit pas se faire sur mobile. Le kanban complet est une expérience desktop. Pour la capture rapide, voir `companion.md`.
