@@ -1223,6 +1223,7 @@
               <option value="openai">OpenAI / compatible (DeepSeek, Groq…)</option>
               <option value="anthropic">Anthropic (Claude)</option>
               <option value="google">Google (Gemini)</option>
+              <option value="ollama">Ollama (local)</option>
             </select>
           </label>
           <label class="field" for="cfgEndpoint">
@@ -2955,8 +2956,12 @@ const App = (() => {
       const endpoint = endpointEl.value.trim();
       const apiKey   = keyEl.value.trim();
       const model    = modelEl.value.trim();
-      if (!apiKey || !model) {
-        flashMessage(statusEl, 'Clé API et modèle requis.', 'error', 3000);
+      if (!apiKey && provider !== 'ollama') {
+        flashMessage(statusEl, 'Clé API requise.', 'error', 3000);
+        return;
+      }
+      if (!model) {
+        flashMessage(statusEl, 'Modèle requis.', 'error', 3000);
         return;
       }
       if (provider === 'openai' && !endpoint) {
@@ -3170,8 +3175,11 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     log('Fournisseur : ' + (cfg && cfg.provider ? cfg.provider : 'openai'));
     log('Modèle      : ' + (cfg && cfg.model    ? cfg.model    : 'non configuré'));
 
-    if (!cfg || !cfg.apiKey || !cfg.model) {
-      throw new Error('Configuration API manquante. Cliquez sur \u2699 dans le header.');
+    if (!cfg || !cfg.model) {
+      throw new Error('Modèle requis. Cliquez sur \u2699 dans le header.');
+    }
+    if (cfg.provider !== 'ollama' && !cfg.apiKey) {
+      throw new Error('Clé API requise. Cliquez sur \u2699 dans le header.');
     }
 
     const provider = cfg.provider || 'openai';
@@ -3216,6 +3224,19 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       body = JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
+      });
+    } else if (provider === 'ollama') {
+      url = cfg.endpoint || 'http://localhost:11434/v1/chat/completions';
+      headers = { 'Content-Type': 'application/json' };
+      if (cfg.apiKey) headers.Authorization = 'Bearer ' + cfg.apiKey;
+      body = JSON.stringify({
+        model: cfg.model,
+        messages: [
+          { role: 'system', content: prompt },
+          { role: 'user', content: 'Décompose cette tâche en micro-actions. Réponds uniquement avec le tableau JSON.' },
+        ],
+        temperature: 0.3,
+        max_tokens: 2048,
       });
     } else {
       throw new Error('Fournisseur inconnu : ' + provider);
@@ -3263,7 +3284,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     log(JSON.stringify(data, null, 2).slice(0, 3000));
 
     let tokens = 0;
-    if (provider === 'openai') {
+    if (provider === 'openai' || provider === 'ollama') {
       const u = data.usage;
       if (u) tokens = (u.prompt_tokens || 0) + (u.completion_tokens || 0);
     } else if (provider === 'anthropic') {
@@ -3277,7 +3298,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
     let content;
 
-    if (provider === 'openai') {
+    if (provider === 'openai' || provider === 'ollama') {
       content = data.choices?.[0]?.message?.content;
     } else if (provider === 'anthropic') {
       content = data.content?.[0]?.text;
