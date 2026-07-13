@@ -2928,19 +2928,27 @@ const App = (() => {
       localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
     }
 
+    function toggleProviderFields() {
+      const isOllama = providerEl.value === 'ollama';
+      endpointEl.closest('.field').style.display = isOllama ? 'none' : '';
+      keyEl.closest('.field').style.display      = isOllama ? 'none' : '';
+    }
+
     function open() {
       const cfg = readAIConfig();
       providerEl.value = cfg && cfg.provider ? cfg.provider : 'openai';
       endpointEl.value = cfg && cfg.endpoint ? cfg.endpoint : '';
       keyEl.value      = cfg && cfg.apiKey   ? cfg.apiKey   : '';
       modelEl.value    = cfg && cfg.model    ? cfg.model    : '';
+      toggleProviderFields();
       // Thèmes tab
       if (Theme) {
         darkSel.value  = Theme.dark;
         lightSel.value = Theme.light;
       }
       overlay.classList.add('open');
-      endpointEl.focus();
+      if (providerEl.value === 'ollama') modelEl.focus();
+      else endpointEl.focus();
     }
 
     function close() {
@@ -2950,6 +2958,8 @@ const App = (() => {
     document.getElementById('configBtn').addEventListener('click', open);
     document.getElementById('configModalClose').addEventListener('click', close);
     registerOverlay(overlay, close);
+
+    providerEl.addEventListener('change', toggleProviderFields);
 
     document.getElementById('cfgSave').addEventListener('click', () => {
       const provider = providerEl.value;
