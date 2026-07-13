@@ -10,6 +10,52 @@ Transformer une tâche lourde en micro-actions à coût cognitif nul via IA. L'u
 
 Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les freelances submergés. L'angle "fichier unique, pas de compte, données locales" est un argument fort face aux Trello/Todoist. Le projet est fonctionnellement complet pour un usage personnel. Pour le rendre accessible à d'autres, le travail restant est surtout la distribution (P0 de la roadmap) et l'UX d'onboarding (P1), pas du code.
 
+## Analyse du projet
+
+### Forces
+
+**Positionnement & concept**
+- Fichier unique, zéro dépendance, zéro compte — différenciant fort face à Trello/Todoist. Le format monolithique est un choix assumé : il simplifie le développement par agents d'IA (pas de build, pas de modules à chercher, tout le contexte est dans un seul fichier)
+- Ciblage précis : TDAH, procrastinateurs, freelances. L'UX est pensée pour le public (quotes bienveillantes, streak, confettis, WIP limit) — pas un énième todo générique
+- **Templates-first** : l'IA est un bonus, pas un prérequis. 12 templates de corvées universelles avec matching fuzzy, zéro barrière à l'entrée
+- Onboarding intégré : liste "Tuto" + "Ranger une surface" avec 6 micro-tâches, premier drag & drop en <10s
+
+**Architecture technique**
+- Séparation DB / DnD / App propre, chaque module a une API publique bien définie
+- `mutate(fn)` comme seul point d'entrée pour les snapshots undo — convention sans ambiguïté
+- Moteur DnD générique robuste (seuil 4px, cache `getBoundingClientRect`, auto-scroll, `pointercancel`)
+- Abstraction IA multi-fournisseur (OpenAI, Anthropic, Google) centralisée dans `queryAI`
+- Undo/redo 30 niveaux avec streak synchronisé, reconstruction DOM sans `location.reload()`
+- Parsing robuste du JSON IA (équilibrage bracketing, détection guillemets, strip code fences)
+- Gestion d'erreur complète : bannière `QuotaExceededError`, crash recovery dans `init()`, `AbortController` 60s
+- Tests : 26 tests DB via iframe/postMessage (`test.html`)
+
+**UX & design**
+- Raccourcis clavier vim-like complets : navigation h/l/j/k, actions carte/liste, recherche `Ctrl+K`, undo/redo
+- 8 thèmes (4 sombres, 4 clairs) avec mode système et 3 clés de persistance
+- Streak + compteur du jour + paliers emoji (👍⚡🔥🚀💪) + confettis canvas à 100% — boucle motivationnelle
+- 50 quotes bienveillantes en rotation, WIP warning, repli de listes, markdown riche dans les notes, tags colorés
+- Accessibilité : `aria-label` sur 20+ boutons, `label[for]`, `prefers-reduced-motion`
+
+### Faiblesses
+
+**Persistance & sécurité**
+- **localStorage = perte totale au `clear` navigateur** ou changement de machine. L'export JSON existe mais est manuel, sans rappel automatique
+- **Pas de sync multi-onglets** — le dernier à écrire gagne, pas de `storage` event listener
+- **Clé API en clair** dans `localStorage` — lisible par toute extension ou script cross-origin
+- Le fichier ne fonctionne pas en `file://` (CORS bloque fetch), nécessite un serveur local
+
+**Fonctionnel**
+- Pas de **companion mobile** implémenté — `companion.md` est une spec, pas du code. La capture rapide sur mobile n'existe pas
+- Pas de **mode offline / service worker** — incohérent avec la promesse "données locales, pas de compte"
+- Pas de **dates d'échéance** sur les cartes — utile pour les freelances avec deadlines
+- Pas de **notifications** — le streak est silencieux hors de l'onglet
+
+**Architecture — points d'attention (non bloquants)**
+- `refreshHeaderInfo()` appelé après chaque mutation (création, suppression, move, cut/paste, toggle). Lit `getLists()` + `getAllCards()` + streak à chaque fois. Un debounce de 50ms réduirait le coût sans perte de réactivité
+- `extractCardData()` lit le DOM (`textContent`, `value`) plutôt que la DB — en cas de désynchronisation, le clipboard contient des données périmées
+- `_rebuild()` reconstruit tout le DOM à chaque undo/redo/reset/import. Correct pour la taille actuelle (~50-100 cartes), deviendrait coûteux au-delà
+
 ## Fonctionnalités existantes
 
 ### Board
@@ -157,16 +203,26 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 ### P1 — Utile au quotidien
 
 4. **Persistance robuste** — localStorage est fragile (clear navigateur, changement de machine = perte totale). Options : sync fichier local, WebDAV, GitHub Gist, ou au minimum un rappel périodique "Pensez à exporter". L'export JSON existe mais il est manuel.
-5. **Feedback de progression** — La barre de progression existe mais il n'y a pas de gratification quand on termine une tâche. Un micro-feedback (animation, compteur de streak, "5 tâches terminées aujourd'hui") renforcerait la boucle motivationnelle — c'est central pour un outil anti-procrastination. ✅ **Streak + pulse + compteur du jour** implémentés.
-6. **UX mobile** — L'outil est conçu pour le desktop (raccourcis clavier, drag & drop souris). Une version « companion de poche » (spécifiée dans `companion.md`) permettrait de capturer des idées rapides sur mobile sans la complexité du kanban complet. La capture se fait sur mobile, l'exécution sur desktop.
+5. **Feedback de progression** — La barre de progression existe mais il n'y a pas de gratification quand on termine une tâche. ✅ **Streak + pulse + compteur du jour** implémentés.
+6. **UX mobile / Companion** — La spec `companion.md` décrit un entonnoir minimal mobile (champ texte → liste Inbox). Le fichier `companion.html` (~200 lignes) reste à implémenter. La capture se fait sur mobile, l'exécution sur desktop.
 
 ### P2 — Nice to have
 
-7. **Notes markdown** — Rendu basique (gras, italique, code inline). ✅ **Implémenté** — cycle édition/preview/fermé, rendu markdown complet (gras, italique, code, liens, titres, listes, ligne horizontale), pastille colorée sur les cartes ayant des notes.
-8. **Tags** — Champ `tags: []` sur les cartes, chips colorés, filtrable via la recherche. ✅ **Implémenté** — chips par hash couleur, bouton `+ tag`, raccourci `t`, préservés au clipboard, recherchables.
+7. **Notes markdown** — ✅ **Implémenté** — cycle édition/preview/fermé, rendu complet (gras, italique, code, liens, titres, listes, ligne horizontale).
+8. **Tags** — ✅ **Implémenté** — chips par hash couleur, bouton `+ tag`, raccourci `t`, préservés au clipboard, recherchables.
 9. **Mode offline complet** — Service worker pour un fonctionnement 100% hors-ligne, cohérent avec la philosophie zéro-dépendance.
+10. **Dates d'échéance** — Champ `dueDate` sur les cartes avec indication visuelle (couleur selon proximité). Utile pour les freelances avec deadlines.
+11. **Notifications navigateur** — `Notification API` : rappel quotidien du streak ou notification quand une carte arrive dans Done. Renforce la boucle motivationnelle hors de l'onglet.
+12. **Sync multi-onglets** — `storage` event listener pour détecter les modifications inter-onglets et proposer un rechargement.
+13. **Son au clic de complétion** — Feedback auditif optionnel (toggle), renforce le sentiment d'accomplissement pour le public TDAH.
+14. **Réorganisation clavier** — Alt+J/K pour déplacer une carte vers le haut/bas sans souris.
+15. **Dashboard statistiques** — Vues semaine/mois (cartes terminées, répartition par liste, évolution streak).
+16. **Import/export CSV et Markdown** — Interopérabilité avec d'autres outils.
 
 ## Changelog
+
+### 2026-07-13 — Correctif confettis intempestifs
+- **Confettis** : ne se déclenchent plus sur les opérations passives (chargement initial, undo, import, rename). La transition `< 100% → 100%` est désormais détectée via `_prevPct` (comparaison avant/après dans `refreshHeaderInfo`). `_rebuild()` pose `_prevPct = 100` pour que la reconstruction DOM ne soit jamais traitée comme une complétion.
 
 ### 2026-07-01 — Tags, markdown enrichi, templates first, accessibilité, robustesse
 - **Tags** : champ `tags: []` sur les cartes, chips colorés par hash du nom, bouton `+ tag`, input inline (Enter ajoute, Escape annule), suppression par ✕. Raccourci `t`. Tags préservés au copier/coller/dupliquer/paste de liste. Recherchables via `Ctrl+K`. DB: `updateCardTags(id, tags)`.

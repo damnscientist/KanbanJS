@@ -1963,8 +1963,8 @@ const App = (() => {
     fill.style.opacity  = pct / 100;
     document.getElementById('progressPct').textContent = pct + '%';
 
-    if (pct === 100) fireConfetti();
-    else _confettiDone = false;
+    if (_prevPct < 100 && pct === 100) fireConfetti();
+    _prevPct = pct;
 
     const badge = document.getElementById('streakBadge');
     if (s.streak >= 1) {
@@ -2032,6 +2032,7 @@ const App = (() => {
   }
 
   let _confettiDone = false;
+  let _prevPct = 0;
 
   function fireConfetti() {
     if (_confettiDone) return;
@@ -4109,6 +4110,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     buildAddListWidget();
     boardEl.scrollLeft = scrollLeft;
     _snapshotSkipped = false;
+    _prevPct = 100;
     await refreshHeaderInfo();
   }
 
