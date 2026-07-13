@@ -3400,7 +3400,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
     function open() {
       const cfg = readAIConfig();
-      const hasAPI = cfg && cfg.apiKey && cfg.model;
+      const hasAPI = cfg && cfg.model && (cfg.apiKey || cfg.provider === 'ollama');
 
       input.value = '';
       debugLines.length = 0;
