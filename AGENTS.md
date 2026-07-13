@@ -24,7 +24,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Séparation DB / DnD / App propre, chaque module a une API publique bien définie
 - `mutate(fn)` comme seul point d'entrée pour les snapshots undo — convention sans ambiguïté
 - Moteur DnD générique robuste (seuil 4px, cache `getBoundingClientRect`, auto-scroll, `pointercancel`)
-- Abstraction IA multi-fournisseur (OpenAI, Anthropic, Google) centralisée dans `queryAI`
+- Abstraction IA multi-fournisseur (OpenAI, Anthropic, Google, Ollama) centralisée dans `queryAI`
 - Undo/redo 30 niveaux avec streak synchronisé, reconstruction DOM sans `location.reload()`
 - Parsing robuste du JSON IA (équilibrage bracketing, détection guillemets, strip code fences)
 - Gestion d'erreur complète : bannière `QuotaExceededError`, crash recovery dans `init()`, `AbortController` 60s
@@ -108,7 +108,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 ### IA (Décomposition)
 - FAB flottant `＋` en bas à droite
 - Modal "Décomposer une tâche" : si l'API est configurée → textarea + bouton Décomposer (IA) + suggestion template fuzzy. Si pas d'API → grille des 12 templates cliquables + lien vers la config.
-- **Abstraction fournisseur** : supporte OpenAI/compatible, Anthropic, Google Gemini (switch dans `queryAI`)
+- **Abstraction fournisseur** : supporte OpenAI/compatible, Anthropic, Google Gemini, Ollama (switch dans `queryAI`)
 - Appel POST à l'API avec format spécifique par fournisseur
 - Prompt système : décomposition en micro-actions anti-procrastination
 - Parsing robuste de la réponse JSON (équilibrage des crochets, détection des guillemets, strip code fences)
@@ -174,7 +174,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - L'ordre des modales et du debug suit le flow : config → décompose
 - Le prompt système est dans `PROMPT_SYSTEM` (template literal, substitution `{{TASK}}`)
 - La config API (provider, endpoint, apiKey, model) est stockée en localStorage, lue par `readAIConfig()` dans App
-- Le fournisseur est branché dans `queryAI` via un switch (`'openai'` / `'anthropic'` / `'google'`), chaque branche construit body + headers + parsing de réponse
+- Le fournisseur est branché dans `queryAI` via un switch (`'openai'` / `'anthropic'` / `'google'` / `'ollama'`), chaque branche construit body + headers + parsing de réponse
 - Le board est initialisé avec 6 listes par défaut via `DB._default` (dont "Tuto" avec cartes-exemples et "Ranger une surface" avec micro-tâches d'onboarding)
 - `buildList(list, cards)` est synchrone — les cartes sont passées en paramètre (pré-fetchées par l'appelant)
 - `buildCard(card, done)` est synchrone (reçoit une carte déjà construite)
@@ -221,8 +221,11 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 
 ## Changelog
 
-### 2026-07-13 — Correctif confettis intempestifs
+### 2026-07-13 — Ollama, confettis, service worker
+
+- **Support Ollama** : nouveau fournisseur `ollama` dans le `<select>`, endpoint par défaut `http://localhost:11434/v1/chat/completions`. La clé API est optionnelle (masquée dans la modale), le timeout passe à 5 min pour les modèles locaux. Parsing identique à OpenAI (format compatible).
 - **Confettis** : ne se déclenchent plus sur les opérations passives (chargement initial, undo, import, rename). La transition `< 100% → 100%` est désormais détectée via `_prevPct` (comparaison avant/après dans `refreshHeaderInfo`). `_rebuild()` pose `_prevPct = 100` pour que la reconstruction DOM ne soit jamais traitée comme une complétion.
+- **Service worker** : spécifications ajoutées dans `github.md` (étape 2 du déploiement GitHub Pages). ~35 lignes pour le mode hors-ligne après la première visite.
 
 ### 2026-07-01 — Tags, markdown enrichi, templates first, accessibilité, robustesse
 - **Tags** : champ `tags: []` sur les cartes, chips colorés par hash du nom, bouton `+ tag`, input inline (Enter ajoute, Escape annule), suppression par ✕. Raccourci `t`. Tags préservés au copier/coller/dupliquer/paste de liste. Recherchables via `Ctrl+K`. DB: `updateCardTags(id, tags)`.
