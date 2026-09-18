@@ -50,6 +50,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Pas de **mode offline / service worker** — incohérent avec la promesse "données locales, pas de compte"
 - Pas de **dates d'échéance** sur les cartes — utile pour les freelances avec deadlines
 - Pas de **notifications** — le streak est silencieux hors de l'onglet
+- **Bug de streak (dates UTC)** — le streak, le compteur du jour et les comparaisons "terminé aujourd'hui" utilisent la date UTC (`new Date().toISOString().slice(0, 10)`) au lieu de la date locale. Une tâche terminée entre minuit et 1h-2h du matin (France) compte pour le jour UTC précédent — un utilisateur nocturne peut perdre son streak malgré un travail quotidien, précisément le scénario démotivant que l'outil veut éviter. À corriger avant publication (Roadmap P0).
 
 **Architecture — points d'attention (non bloquants)**
 - `refreshHeaderInfo()` appelé après chaque mutation (création, suppression, move, cut/paste, toggle). Lit `getLists()` + `getAllCards()` + streak à chaque fois. Un debounce de 50ms réduirait le coût sans perte de réactivité
@@ -199,21 +200,30 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 1. **Hébergement statique** — Déployer sur GitHub Pages / Netlify / Vercel. Le fichier ne fonctionne pas en `file://` (CORS bloque fetch). Sans ça, aucun non-technicien ne peut utiliser l'outil. Alternative : un script shell/batch qui lance un serveur local (`python -m http.server`).
 2. **Supprimer le mur de la clé API** — Demander à un utilisateur lambda de créer un compte OpenAI et coller une clé API est exactement la friction que l'outil est censé éliminer. Options : backend léger qui proxy les appels IA, intégration d'un modèle local (WebLLM / Ollama), ou mode dégradé avec templates de décomposition pré-faits (pas d'IA requise). ✅ **Templates first** — 12 corvées universelles avec matching fuzzy, grille de templates dans la modale quand l'API n'est pas configurée, FAB toujours invitant (plus de `!` rouge).
 3. **Onboarding** — La liste "Tuto" est un bon début mais ne montre pas pourquoi c'est différent d'un Trello. Ajouter une première décomposition guidée ("Essayez : ranger mon bureau") qui rend le concept tangible en 30 secondes. ✅ **Onboarding interactif** — Tuto reformulé en consignes actionnables, liste "Ranger une surface" avec 6 micro-tâches d'exemple (template réel) pour un premier drag en <10s.
+4. **Corriger le bug de streak (dates UTC)** — Voir Faiblesses. Fix : un helper unique `dateKey(date)` retournant `YYYY-MM-DD` **local** (formatage manuel `getFullYear`/`getMonth`/`getDate`, ou `toLocaleDateString('sv-SE')`), utilisé partout où `toISOString().slice(0, 10)` apparaît : `updateStreak`, `adjustStreak`, `refreshHeaderInfo` (compteur du jour, badge paused), et les comparaisons `doneAt.slice(0, 10) === today` des handlers de complétion/décomplétion (conversion de l'ISO en `Date` avant extraction de la clé locale, sinon `doneAt` reste en UTC et la comparaison décale). ~20 lignes. Ajouter un test dans `test.html` : une date construite à 23h30 locale doit donner la clé du jour local, pas celle du jour UTC.
 
 ### P1 — Utile au quotidien
 
-4. **Persistance robuste** — localStorage est fragile (clear navigateur, changement de machine = perte totale). Options : sync fichier local, WebDAV, GitHub Gist, ou au minimum un rappel périodique "Pensez à exporter". L'export JSON existe mais il est manuel.
-5. **Feedback de progression** — La barre de progression existe mais il n'y a pas de gratification quand on termine une tâche. ✅ **Streak + pulse + compteur du jour** implémentés.
-6. **UX mobile / Companion** — La spec `companion.md` décrit un entonnoir minimal mobile (champ texte → liste Inbox). Le fichier `companion.html` (~200 lignes) reste à implémenter. La capture se fait sur mobile, l'exécution sur desktop.
+5. **Persistance robuste — le "fichier compagnon"** — localStorage est fragile (clear navigateur, changement de machine = perte totale, streak inclus). Principe retenu : **l'app apporte le mécanisme, l'utilisateur apporte le stockage** (zéro compte, zéro backend, zéro dépendance).
+   - **Fichier compagnon (File System Access API)** : action "💾 Sauvegarde automatique…" → `showSaveFilePicker()` ; le `FileSystemFileHandle` est conservé dans IndexedDB (survit aux redémarrages). `DB._save()` déclenche un `_scheduleFileSave()` debouncé (~800 ms). Même format que `exportJSON()` (`{state, streak}`) — zéro nouveau format.
+   - **Restauration en un clic** : au boot, si `kanbanjs:state` est vide/corrompu mais que le handle existe et que le fichier contient des données → bannière inline "Vos données ont disparu — Restaurer ?" → un seul clic → `_rebuild()`. Le public cible ne complètera jamais un flow de restauration en 5 étapes.
+   - **Multi-machine gratuit** : si l'utilisateur range le fichier dans un dossier synchronisé (Drive, Dropbox, Syncthing), il obtient la sync sans une ligne de code côté app.
+   - **`navigator.storage.persist()`** au premier `updateStreak()` — empêche l'éviction implicite par le navigateur. Ne protège pas du "effacer les données de navigation", d'où le fichier compagnon.
+   - **Sync multi-onglets** (absorbé depuis P2) : `window.addEventListener('storage', …)` → debounce → `_rebuild()`. ~15 lignes. Prérequis si le companion voit le jour (la spec `companion.md` prévoit aujourd'hui d'"accepter le race").
+   - **Self-heal** : dans `DB._load()`, si le JSON est corrompu, tenter une copie de secours avant de retomber sur `_default` — perdre son board pour un JSON cassé est insupportable.
+   - **Replis et pièges** : Safari/Firefox n'ont pas les pickers → feature detection + repli sur l'export manuel existant et un rappel périodique ("Dernier export : il y a N jours") ; permission à réactiver à chaque session Chromium (état discret dans le header, jamais d'`alert()`) ; conflits multi-machines = dernier écrivain gagne (assumé, à documenter dans le README).
+   - **Ne PAS faire** : WebDAV, GitHub Gist, backend proxy, compte utilisateur — chacun brise la philosophie zéro-compte sans mieux protéger que le fichier chez l'utilisateur.
+   - **Estimation** : ~175 lignes (~150 fichier compagnon + ~25 persist/storage event/self-heal).
+6. **Feedback de progression** — La barre de progression existe mais il n'y a pas de gratification quand on termine une tâche. ✅ **Streak + pulse + compteur du jour** implémentés.
+7. **UX mobile / Companion** — La spec `companion.md` décrit un entonnoir minimal mobile (champ texte → liste Inbox). Le fichier `companion.html` (~200 lignes) reste à implémenter. La capture se fait sur mobile, l'exécution sur desktop.
 
 ### P2 — Nice to have
 
-7. **Notes markdown** — ✅ **Implémenté** — cycle édition/preview/fermé, rendu complet (gras, italique, code, liens, titres, listes, ligne horizontale).
-8. **Tags** — ✅ **Implémenté** — chips par hash couleur, bouton `+ tag`, raccourci `t`, préservés au clipboard, recherchables.
-9. **Mode offline complet** — Service worker pour un fonctionnement 100% hors-ligne, cohérent avec la philosophie zéro-dépendance.
-10. **Dates d'échéance** — Champ `dueDate` sur les cartes avec indication visuelle (couleur selon proximité). Utile pour les freelances avec deadlines.
-11. **Notifications navigateur** — `Notification API` : rappel quotidien du streak ou notification quand une carte arrive dans Done. Renforce la boucle motivationnelle hors de l'onglet.
-12. **Sync multi-onglets** — `storage` event listener pour détecter les modifications inter-onglets et proposer un rechargement.
+8. **Notes markdown** — ✅ **Implémenté** — cycle édition/preview/fermé, rendu complet (gras, italique, code, liens, titres, listes, ligne horizontale).
+9. **Tags** — ✅ **Implémenté** — chips par hash couleur, bouton `+ tag`, raccourci `t`, préservés au clipboard, recherchables.
+10. **Mode offline complet** — Service worker pour un fonctionnement 100% hors-ligne, cohérent avec la philosophie zéro-dépendance.
+11. **Dates d'échéance** — Champ `dueDate` sur les cartes avec indication visuelle (couleur selon proximité). Utile pour les freelances avec deadlines.
+12. **Notifications navigateur** — `Notification API` : rappel quotidien du streak ou notification quand une carte arrive dans Done. Renforce la boucle motivationnelle hors de l'onglet.
 13. **Son au clic de complétion** — Feedback auditif optionnel (toggle), renforce le sentiment d'accomplissement pour le public TDAH.
 14. **Réorganisation clavier** — Alt+J/K pour déplacer une carte vers le haut/bas sans souris.
 15. **Dashboard statistiques** — Vues semaine/mois (cartes terminées, répartition par liste, évolution streak).
