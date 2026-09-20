@@ -48,7 +48,6 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Pas de **companion mobile** implémenté — `companion.md` est une spec, pas du code. La capture rapide sur mobile n'existe pas
 - Pas de **dates d'échéance** sur les cartes — utile pour les freelances avec deadlines
 - Pas de **notifications** — le streak est silencieux hors de l'onglet
-- **Bug de streak (dates UTC)** — le streak, le compteur du jour et les comparaisons "terminé aujourd'hui" utilisent la date UTC (`new Date().toISOString().slice(0, 10)`) au lieu de la date locale. Une tâche terminée entre minuit et 1h-2h du matin (France) compte pour le jour UTC précédent — un utilisateur nocturne peut perdre son streak malgré un travail quotidien, précisément le scénario démotivant que l'outil veut éviter. À corriger (Roadmap P0).
 
 **Architecture — points d'attention (non bloquants)**
 - `refreshHeaderInfo()` appelé après chaque mutation (création, suppression, move, cut/paste, toggle). Lit `getLists()` + `getAllCards()` + streak à chaque fois. Un debounce de 50ms réduirait le coût sans perte de réactivité
@@ -174,6 +173,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - `mutate(fn)` est le seul point d'entrée pour les snapshots undo. Ne jamais appeler `_snapshot()` directement — utiliser `await mutate(() => DB.xxx(...))`.
 - `DB.batch(fn)` suspend les écritures `localStorage` le temps de l'exécution, puis persiste en une fois. Utiliser pour les opérations groupées (création multiple de cartes, import de liste avec cartes).
 - Les helpers `toggleForm`, `registerOverlay`, `formatDoneAt`, `extractCardData`, `extractListData`, `removeListDom` sont dans le scope App, juste après `removeListDom`.
+- **Dates** : toujours passer par `dateKey(date)` (clé `YYYY-MM-DD` **locale**) et `isToday(date)` pour toute logique de jour (streak, compteur, comparaison `doneAt`). Ne jamais utiliser `toISOString().slice(0, 10)` pour une date logique — c'est la date UTC. Seul usage légitime restant : le nom de fichier d'export.
 - Le thème est capturé au démarrage de App via `const Theme = window.__themeAPI`. Plus aucun accès à `window.__themeAPI` dans le code métier.
 - `Clipboard` est un objet (plus un `let _clipboard`), méthodes : `copyCard/cutCard/copyList/cutList/paste/clear/isEmpty/type`.
 
@@ -206,7 +206,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 1. **Hébergement statique** — Déployer sur GitHub Pages / Netlify / Vercel. Le fichier ne fonctionne pas en `file://` (CORS bloque fetch). Sans ça, aucun non-technicien ne peut utiliser l'outil. Alternative : un script shell/batch qui lance un serveur local (`python -m http.server`). ✅ **Déployé** — https://damnscientist.github.io/KanbanJS/ (branche `main`, racine, service worker actif).
 2. **Supprimer le mur de la clé API** — Demander à un utilisateur lambda de créer un compte OpenAI et coller une clé API est exactement la friction que l'outil est censé éliminer. Options : backend léger qui proxy les appels IA, intégration d'un modèle local (WebLLM / Ollama), ou mode dégradé avec templates de décomposition pré-faits (pas d'IA requise). ✅ **Templates first** — 12 corvées universelles avec matching fuzzy, grille de templates dans la modale quand l'API n'est pas configurée, FAB toujours invitant (plus de `!` rouge).
 3. **Onboarding** — La liste "Tuto" est un bon début mais ne montre pas pourquoi c'est différent d'un Trello. Ajouter une première décomposition guidée ("Essayez : ranger mon bureau") qui rend le concept tangible en 30 secondes. ✅ **Onboarding interactif** — Tuto reformulé en consignes actionnables, liste "Ranger une surface" avec 6 micro-tâches d'exemple (template réel) pour un premier drag en <10s.
-4. **Corriger le bug de streak (dates UTC)** — Voir Faiblesses. Fix : un helper unique `dateKey(date)` retournant `YYYY-MM-DD` **local** (formatage manuel `getFullYear`/`getMonth`/`getDate`, ou `toLocaleDateString('sv-SE')`), utilisé partout où `toISOString().slice(0, 10)` apparaît : `updateStreak`, `adjustStreak`, `refreshHeaderInfo` (compteur du jour, badge paused), et les comparaisons `doneAt.slice(0, 10) === today` des handlers de complétion/décomplétion (conversion de l'ISO en `Date` avant extraction de la clé locale, sinon `doneAt` reste en UTC et la comparaison décale). ~20 lignes. Ajouter un test dans `test.html` : une date construite à 23h30 locale doit donner la clé du jour local, pas celle du jour UTC.
+4. **Corriger le bug de streak (dates UTC)** — Voir Faiblesses. Fix : un helper unique `dateKey(date)` retournant `YYYY-MM-DD` **local** (formatage manuel `getFullYear`/`getMonth`/`getDate`, ou `toLocaleDateString('sv-SE')`), utilisé partout où `toISOString().slice(0, 10)` apparaît : `updateStreak`, `adjustStreak`, `refreshHeaderInfo` (compteur du jour, badge paused), et les comparaisons `doneAt.slice(0, 10) === today` des handlers de complétion/décomplétion (conversion de l'ISO en `Date` avant extraction de la clé locale, sinon `doneAt` reste en UTC et la comparaison décale). ~20 lignes. Ajouter un test dans `test.html` : une date construite à 23h30 locale doit donner la clé du jour local, pas celle du jour UTC. ✅ **Corrigé (2026-09-20)** — helpers `dateKey(date)` et `isToday(date)` dans le scope App, tous les usages remplacés ; 3 tests ajoutés (0h30, 23h30, 1er janvier). Le seul `toISOString().slice(0, 10)` restant est le nom de fichier d'export (légitime).
 
 ### P1 — Utile au quotidien
 
@@ -236,6 +236,13 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 16. **Import/export CSV et Markdown** — Interopérabilité avec d'autres outils.
 
 ## Changelog
+
+### 2026-09-20 — Correctif streak UTC (v1.0.1)
+
+- **Bug corrigé** : le streak, le compteur du jour et les comparaisons « terminé aujourd'hui » utilisaient la date UTC. Une tâche terminée après minuit (heure locale, fuseau UTC+) comptait pour le jour précédent — un utilisateur nocturne pouvait perdre son streak malgré un travail quotidien.
+- **Helpers** : `dateKey(date)` (clé `YYYY-MM-DD` locale via `getFullYear`/`getMonth`/`getDate`) et `isToday(date)` dans le scope App. Remplacent 6 usages de `toISOString().slice(0, 10)` (`refreshHeaderInfo`, `updateStreak`, `adjustStreak`, 3 comparaisons `doneAt`).
+- **Tests** : 3 tests ajoutés dans `test.html` (0h30, 23h30, 1er janvier) — 30/30. Le test à 0h30 échoue sur l'ancien code, il détecte donc bien la régression.
+- **Service worker** : cache bumpé `kanbanjs-v1` → `v2`.
 
 ### 2026-09-20 — Publication GitHub Pages (v1.0.0)
 

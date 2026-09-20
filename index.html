@@ -1928,6 +1928,16 @@ const App = (() => {
     ta.style.height = Math.max(ta.scrollHeight, ta.rows ? ta.rows * 20 : 28) + 'px';
   }
 
+  function dateKey(date) {
+    const d = date instanceof Date ? date : new Date(date);
+    const pad = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+
+  function isToday(date) {
+    return date != null && dateKey(date) === dateKey(new Date());
+  }
+
   async function refreshHeaderInfo() {
     const lists = await DB.getLists();
     const allCards = await DB.getAllCards();
@@ -1938,7 +1948,7 @@ const App = (() => {
       `${lists.length} liste${lists.length !== 1 ? 's' : ''} \u00b7 ${done}/${total} carte${total !== 1 ? 's' : ''}`;
 
     const s = readStreak();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = dateKey(new Date());
     if (s.todayDate === today && s.todayCount > 0) {
       let emoji;
       if (s.todayCount >= 20) emoji = '\u{1F4AA}';
@@ -2001,9 +2011,9 @@ const App = (() => {
 
   function updateStreak(increment = 1) {
     const s = readStreak();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = dateKey(new Date());
     if (s.todayDate !== today) {
-      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      const yesterday = dateKey(new Date(Date.now() - 86400000));
       s.streak = s.lastDate === yesterday ? s.streak + 1 : 1;
       s.lastDate = today;
       s.todayCount = increment;
@@ -2018,7 +2028,7 @@ const App = (() => {
   function adjustStreak(delta) {
     if (delta >= 0) return;
     const s = readStreak();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = dateKey(new Date());
     if (s.todayDate === today) {
       s.todayCount = Math.max(0, s.todayCount + delta);
       writeStreak(s);
@@ -2515,7 +2525,7 @@ const App = (() => {
       e.stopPropagation();
       if (wrap.classList.contains('card-done')) {
         const doneAt = wrap.dataset.doneAt;
-        if (doneAt && doneAt.slice(0, 10) === new Date().toISOString().slice(0, 10)) {
+        if (isToday(doneAt)) {
           adjustStreak(-1);
         }
       }
@@ -2617,7 +2627,7 @@ const App = (() => {
         if (atEl) atEl.textContent = formatDoneAt(now);
       } else if (!isDestDone && wasDone) {
         const prevDoneAt = wrap.dataset.doneAt;
-        if (prevDoneAt && prevDoneAt.slice(0, 10) === new Date().toISOString().slice(0, 10)) {
+        if (isToday(prevDoneAt)) {
           adjustStreak(-1);
         }
         delete wrap.dataset.doneAt;
@@ -2767,7 +2777,6 @@ const App = (() => {
       wrap.dataset.done = updated.done ? 'true' : 'false';
       doneToggle.dataset.done = updated.done ? 'true' : 'false';
       doneToggle.classList.toggle('active', updated.done);
-      const todayDate = new Date().toISOString().slice(0, 10);
       const newDone = willBeDone ? [...cardsEl.querySelectorAll('.card:not(.card-done)')].length : 0;
       cardsEl.querySelectorAll('.card').forEach(c => {
         c.classList.toggle('card-done', updated.done);
@@ -2776,7 +2785,7 @@ const App = (() => {
           c.dataset.doneAt = now;
           if (atEl) atEl.textContent = formatDoneAt(now);
         } else {
-          if (c.dataset.doneAt && c.dataset.doneAt.slice(0, 10) === todayDate) {
+          if (isToday(c.dataset.doneAt)) {
             adjustStreak(-1);
           }
           delete c.dataset.doneAt;
@@ -4166,7 +4175,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     }
   }
 
-  return { init, _rebuild };
+  return { init, _rebuild, dateKey };
 })();
 
 App.init();
@@ -4198,6 +4207,7 @@ window.__testAPI = (() => {
         case 'getBoard':       result = await DB.getBoard(); break;
         case 'cardCount':      result = (await DB.getAllCards()).length; break;
         case 'listCount':      result = (await DB.getLists()).length; break;
+        case 'dateKey':        result = App.dateKey(new Date(args.date)); break;
         default: throw new Error('Unknown method: ' + method);
       }
     } catch (err) { error = err.message; }

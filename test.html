@@ -217,6 +217,20 @@ async function run() {
     assert('Compteurs', false, e.message);
   }
 
+  // ── 10. dateKey locale (pas UTC) ────────────────────────────
+  try {
+    const late = await send('dateKey', { date: new Date(2026, 5, 30, 23, 30).toISOString() });
+    assert('dateKey à 23h30 locale = jour local', late === '2026-06-30', 'trouvé : ' + late);
+
+    const early = await send('dateKey', { date: new Date(2026, 5, 30, 0, 30).toISOString() });
+    assert('dateKey à 0h30 locale = jour local', early === '2026-06-30', 'trouvé : ' + early);
+
+    const midnight = await send('dateKey', { date: new Date(2026, 0, 1, 0, 0).toISOString() });
+    assert('dateKey au 1er janvier', midnight === '2026-01-01', 'trouvé : ' + midnight);
+  } catch (e) {
+    assert('dateKey locale', false, e.message);
+  }
+
   // ── Résumé ──────────────────────────────────────────────────
   const total = pass + fail;
   const summary = document.createElement('div');
