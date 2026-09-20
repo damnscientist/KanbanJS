@@ -235,6 +235,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 14. **Réorganisation clavier** — Alt+J/K pour déplacer une carte vers le haut/bas sans souris.
 15. **Dashboard statistiques** — Vues semaine/mois (cartes terminées, répartition par liste, évolution streak).
 16. **Import/export CSV et Markdown** — Interopérabilité avec d'autres outils.
+17. **Fournisseur LM Studio** — Ajouter `lmstudio` au switch `queryAI`, sur le modèle de `ollama` : serveur local compatible OpenAI (`http://localhost:1234/v1/chat/completions` par défaut), clé API optionnelle (LM Studio n'en exige pas), timeout long (~5 min) car les modèles locaux sont lents. Parsing identique à OpenAI. Complète l'offre « IA locale sans compte » à côté d'Ollama — utile pour les utilisateurs qui préfèrent l'interface graphique de LM Studio pour gérer/télécharger leurs modèles.
 
 ## Changelog
 
