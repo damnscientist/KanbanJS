@@ -1,6 +1,6 @@
 # KanbanJS — Projet anti-procrastination
 
-Fichier unique `index.html` (~4320 lignes) + `sw.js` (service worker, 26 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne. Publié sur GitHub Pages : https://damnscientist.github.io/KanbanJS/
+Fichier unique `index.html` (~4845 lignes) + `sw.js` (service worker, 26 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne. Publié sur GitHub Pages : https://damnscientist.github.io/KanbanJS/
 
 ## Concept
 
@@ -28,7 +28,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Undo/redo 30 niveaux avec streak synchronisé, reconstruction DOM sans `location.reload()`
 - Parsing robuste du JSON IA (équilibrage bracketing, détection guillemets, strip code fences)
 - Gestion d'erreur complète : bannière `QuotaExceededError`, crash recovery dans `init()`, `AbortController` 60s
-- Tests : 34 tests DB via iframe/postMessage (`test.html`)
+- Tests : 50 tests DB via iframe/postMessage (`test.html`)
 
 **UX & design**
 - Raccourcis clavier vim-like complets : navigation h/l/j/k, actions carte/liste, recherche `Ctrl+K`, undo/redo
@@ -40,9 +40,9 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 ### Faiblesses
 
 **Persistance & sécurité**
-- **localStorage = perte totale au `clear` navigateur** ou changement de machine. L'export JSON existe mais est manuel, sans rappel automatique. Atténué par la copie de secours automatique (`kanbanjs:state.bak`) et la demande de stockage persistant, mais pas résolu (voir roadmap P1 : fichier compagnon)
-- **Sync multi-onglets partielle** — les changements distants sont désormais répercutés (`storage` event → debounce → reload/rebuild), mais les conflits d'écriture simultanée restent en « dernier écrivain gagne »
-- **Clé API en clair** dans `localStorage` — lisible par toute extension ou script cross-origin
+- **localStorage = perte totale au `clear` navigateur** ou changement de machine. Atténué par la copie de secours (`kanbanjs:state.bak`), le self-heal, le stockage persistant et surtout le **fichier compagnon** (sauvegarde automatique dans un fichier choisi par l'utilisateur, Chrome/Edge/Opera). Reste non couvert : Safari/Firefox (repli export manuel à faire, P3)
+- **Sync multi-onglets partielle** — les changements distants sont répercutés (`storage` event → debounce → reload/rebuild), mais les conflits d'écriture simultanée restent en « dernier écrivain gagne »
+- **Clé API en clair** dans `localStorage` — lisible par toute extension ou script cross-origin. Volontairement **exclue** du fichier compagnon
 
 **Fonctionnel**
 - Pas de **companion mobile** implémenté — `companion.md` est une spec, pas du code. La capture rapide sur mobile n'existe pas
@@ -128,6 +128,22 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - **Sync multi-onglets** : un `storage` event (déclenché par un autre onglet) déclenche après 200 ms un `DB.reload()` immédiat puis un `_rebuild()` différé tant qu'une édition est en cours (les données sont rafraîchies pour éviter d'écraser un changement distant par un `blur` sur état périmé ; seul le DOM attend). Les piles undo/redo sont purgées à la synchro (conflits simultanés : dernier écrivain gagne)
 - **Stockage persistant** : `navigator.storage.persist()` demandé au premier streak (évite l'éviction implicite par le navigateur)
 
+### Fichier compagnon (`AutoSave`)
+
+Sauvegarde automatique du board dans un fichier choisi par l'utilisateur, via la File System Access API (Chrome, Edge, Opera). Zéro compte, zéro backend : l'app apporte le mécanisme, l'utilisateur apporte le stockage.
+
+- **Activation** : Configuration → onglet **Données** → « Choisir un fichier… » (`showSaveFilePicker`), ou « Ouvrir un fichier existant… » (`showOpenFilePicker`).
+- **Handle** : conservé dans IndexedDB (base `kanbanjs`, store `handles`, clé `companion`) avec `lastWriteAt` — survit aux redémarrages. Un `_store` swappable permet de tester sans IndexedDB.
+- **Écriture** : `DB.onSave()` → `schedule()` (debounce 800 ms) → `flush()` écrit `exportJSON()` (`{state, streak}`), jamais la clé API. Flush aussi sur `visibilitychange` (onglet caché).
+- **États** : `unsupported` (API absente) | `idle` | `active` | `paused` (permission à réactiver) | `error` (écriture échouée).
+- **Permission** : Chromium exige un geste utilisateur à chaque session. La puce `💾 Réactiver` du header déclenche `resume()`.
+- **Bandeaux** : `restore` au boot si `DB.loadSource() === 'default'` et qu'un handle existe (données locales disparues) ; `reload` si `file.lastModified > lastWriteAt` (fichier modifié ailleurs — multi-machine via dossier synchronisé). Jamais de remplacement silencieux.
+- **Règle d'or** : tant qu'un bandeau est affiché (`pending` non nul), **aucune écriture** n'a lieu — `schedule()` et `flush()` refusent d'écrire. « Ignorer » demande confirmation (le fichier sera écrasé par le board local) puis reprend l'écriture. Sans cette règle, la première frappe après un « Ignorer » détruisait la seule sauvegarde existante.
+- **Armement sûr** : `attach()` lit et valide le fichier **avant** de mémoriser le handle. Un fichier choisi par erreur n'est jamais écrasé.
+- **Robustesse des écritures** : compteur de génération `_gen` (une `disable()` pendant une écriture laisse l'état `idle`, jamais `active`) et drapeau `_dirty` (une écriture déclenchée pendant un flush en vol est rejouée, jamais perdue).
+- **Détection externe** : `_externalNewer()` compare `file.lastModified` à `lastWriteAt` avec 1 s de tolérance. Granularité et dérive d'horloge entre machines incluses : détection fiable à la seconde près, pas à la milliseconde.
+- **Pièges** : écriture non atomique (`createWritable` tronque avant d'écrire) ; IndexedDB protégée par un timeout de 8 s pour ne jamais bloquer l'app ; `AutoSave.init()` n'est pas attendu par `App.init()`.
+
 ## Architecture
 
 ### Modules (dans l'ordre dans le fichier)
@@ -135,7 +151,8 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 | Module | Responsabilité | API publique |
 |---|---|---|
 | `initTheme` | IIFE, lit/applique/persiste le thème | lecture au load |
-| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, toggleCollapsed, getCards, getAllCards, createCard, updateCard, updateCardNotes, updateCardTags, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard, reload, exportJSON, importJSON, reset, restoreJSON, batch` |
+| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, toggleCollapsed, getCards, getAllCards, createCard, updateCard, updateCardNotes, updateCardTags, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard, reload, onSave, loadSource, exportJSON, importJSON, reset, restoreJSON, batch` |
+| `AutoSave` | Fichier compagnon (File System Access API + handle en IndexedDB) | `init, enable, attach, disable, resume, restore, flush, schedule, dismiss, available, status, pending, fileName, lastWriteAt, onChange` |
 | `DnD` | Moteur de drag & drop générique | `start(dragEl, id, { ghostEl?, ghostClass?, phClass?, getZone, getAfter, getPos, skip? }, onDrop)` |
 | `App` | UI Kanban | `init()` boot la session |
 
@@ -158,7 +175,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 
 ### Limites techniques
 - **Ouverture en `file://`** : l'API IA est bloquée par CORS. L'app fonctionne en `file://` pour le board, les templates et la persistance, mais les appels IA nécessitent d'être servi en `http(s)` — d'où la publication GitHub Pages.
-- **Service worker (`sw.js`)** : cache-first, chemins relatifs (`'./'`), guard non-GET (les POST IA ne doivent pas passer par la Cache API). Enregistré dans `index.html` uniquement en `https:`. **Toute modification publiée d'`index.html` ou `sw.js` doit bumper le nom de cache (`kanbanjs-v1` → `v2` → `v3`)**, sinon les visiteurs gardent l'ancienne version.
+- **Service worker (`sw.js`)** : cache-first, chemins relatifs (`'./'`), guard non-GET (les POST IA ne doivent pas passer par la Cache API). Enregistré dans `index.html` uniquement en `https:`. **Toute modification publiée d'`index.html` ou `sw.js` doit bumper le nom de cache (`kanbanjs-v1` → `v2` → `v3` → `v4`)**, sinon les visiteurs gardent l'ancienne version.
 - **Fournisseur IA centralisé** : tout le branchement fournisseur est dans `queryAI` (switch provider → body/headers/parsing)
 
 ### Déploiement
@@ -216,15 +233,15 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 ### P1 — Utile au quotidien
 
 5. **Persistance robuste — le "fichier compagnon"** — localStorage est fragile (clear navigateur, changement de machine = perte totale, streak inclus). Principe retenu : **l'app apporte le mécanisme, l'utilisateur apporte le stockage** (zéro compte, zéro backend, zéro dépendance).
-   - **Fichier compagnon (File System Access API)** : action "💾 Sauvegarde automatique…" → `showSaveFilePicker()` ; le `FileSystemFileHandle` est conservé dans IndexedDB (survit aux redémarrages). `DB._save()` déclenche un `_scheduleFileSave()` debouncé (~800 ms). Même format que `exportJSON()` (`{state, streak}`) — zéro nouveau format.
-   - **Restauration en un clic** : au boot, si `kanbanjs:state` est vide/corrompu mais que le handle existe et que le fichier contient des données → bannière inline "Vos données ont disparu — Restaurer ?" → un seul clic → `_rebuild()`. Le public cible ne complètera jamais un flow de restauration en 5 étapes.
-   - **Multi-machine gratuit** : si l'utilisateur range le fichier dans un dossier synchronisé (Drive, Dropbox, Syncthing), il obtient la sync sans une ligne de code côté app.
+   - **Fichier compagnon (File System Access API)** : action « Choisir un fichier… » → `showSaveFilePicker()` ; le `FileSystemFileHandle` est conservé dans IndexedDB (survit aux redémarrages). `DB.onSave()` déclenche un flush debouncé (800 ms). Même format que `exportJSON()` (`{state, streak}`) — zéro nouveau format. ✅ **Implémenté (2026-09-20)** — module `AutoSave`, onglet Données, clé API exclue du fichier.
+   - **Restauration en un clic** : au boot, si `kanbanjs:state` est vide/corrompu mais que le handle existe et que le fichier contient des données → bannière inline "Vos données ont disparu — Restaurer ?" → un seul clic → `_rebuild()`. Le public cible ne complètera jamais un flow de restauration en 5 étapes. ✅ **Implémenté (2026-09-20)** — bandeau `restore`, déclenché par `DB.loadSource() === 'default'` + handle présent.
+   - **Multi-machine gratuit** : si l'utilisateur range le fichier dans un dossier synchronisé (Drive, Dropbox, Syncthing), il obtient la sync sans une ligne de code côté app. ✅ **Implémenté (2026-09-20, avec garde-fou)** — bandeau `reload` si `file.lastModified > lastWriteAt`. Coût : la permission Chromium ne dure qu'une session, donc **un clic « 💾 Réactiver » par session** ; c'est ce clic qui permet de détecter la version externe.
    - **`navigator.storage.persist()`** au premier `updateStreak()` — empêche l'éviction implicite par le navigateur. Ne protège pas du "effacer les données de navigation", d'où le fichier compagnon. ✅ **Implémenté** — `requestPersist()` (flag `_persistAsked`, vérifie `persisted()` avant de demander).
-   - **Sync multi-onglets** (absorbé depuis P2) : `window.addEventListener('storage', …)` → debounce → `_rebuild()`. ~15 lignes. Prérequis si le companion voit le jour (la spec `companion.md` prévoit aujourd'hui d'"accepter le race"). ✅ **Implémenté** — `_onStorage()` filtre les clés (`state`, `streak`, `clear`), debounce 200 ms, `DB.reload()` puis `_rebuild()` ; les conflits simultanés restent en dernier écrivain gagne.
+   - **Sync multi-onglets** (absorbé depuis P2) : `window.addEventListener('storage', …)` → debounce → `_rebuild()`. ~15 lignes. Prérequis si le companion voit le jour (la spec `companion.md` prévoit aujourd'hui d'"accepter le race"). ✅ **Implémenté** — `_onStorage()` filtre les clés (`state`, `streak`, `clear`), debounce 200 ms, `DB.reload()` immédiat puis `_rebuild()` différé pendant une édition ; piles undo purgées ; les conflits simultanés restent en dernier écrivain gagne.
    - **Self-heal** : dans `DB._load()`, si le JSON est corrompu, tenter une copie de secours avant de retomber sur `_default` — perdre son board pour un JSON cassé est insupportable. ✅ **Implémenté** — `kanbanjs:state.bak` (état précédent, écrit par `_save()`), restauré et réinjecté dans la clé principale par `_load()`.
-   - **Replis et pièges** : Safari/Firefox n'ont pas les pickers → feature detection + repli sur l'export manuel existant et un rappel périodique ("Dernier export : il y a N jours") ; permission à réactiver à chaque session Chromium (état discret dans le header, jamais d'`alert()`) ; conflits multi-machines = dernier écrivain gagne (assumé, à documenter dans le README).
+   - **Replis et pièges** — permission à réactiver à chaque session Chromium ✅ **Implémenté** (puce `💾 Réactiver` dans le header, `resume()`, jamais d'`alert()`) ; conflits multi-machines = dernier écrivain gagne ✅ (documenté dans le README, désormais avec bandeau `reload` au lieu d'un écrasement silencieux) ; ⏳ **Reste à faire** : repli Safari/Firefox (feature detection + rappel « Dernier export : il y a N jours ») et détection d'un fichier modifié pendant que l'app est ouverte (aujourd'hui : seulement au boot ou au clic Réactiver).
    - **Ne PAS faire** : WebDAV, GitHub Gist, backend proxy, compte utilisateur — chacun brise la philosophie zéro-compte sans mieux protéger que le fichier chez l'utilisateur.
-   - **Estimation** : ~175 lignes au total — ✅ ~25 livrées le 2026-09-20 (persist + storage event + self-heal), ~150 restantes (fichier compagnon + restauration 1 clic + replis navigateurs).
+   - **Estimation** : ~175 lignes au total — ✅ ~25 livrées le 2026-09-20 (persist + storage event + self-heal), ✅ ~230 livrées le 2026-09-20 au titre du fichier compagnon (le budget initial de ~150 était sous-estimé : ni l'UI, ni les permissions, ni les tests n'étaient comptés). ⏳ Reste ~25 lignes (repli Safari/Firefox + rappel d'export).
 6. **Feedback de progression** — La barre de progression existe mais il n'y a pas de gratification quand on termine une tâche. ✅ **Streak + pulse + compteur du jour** implémentés.
 7. **UX mobile / Companion** — La spec `companion.md` décrit un entonnoir minimal mobile (champ texte → liste Inbox). Le fichier `companion.html` (~200 lignes) reste à implémenter. La capture se fait sur mobile, l'exécution sur desktop.
 
@@ -242,6 +259,20 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 17. **Fournisseur LM Studio** — Ajouter `lmstudio` au switch `queryAI`, sur le modèle de `ollama` : serveur local compatible OpenAI (`http://localhost:1234/v1/chat/completions` par défaut), clé API optionnelle (LM Studio n'en exige pas), timeout long (~5 min) car les modèles locaux sont lents. Parsing identique à OpenAI. Complète l'offre « IA locale sans compte » à côté d'Ollama — utile pour les utilisateurs qui préfèrent l'interface graphique de LM Studio pour gérer/télécharger leurs modèles.
 
 ## Changelog
+
+### 2026-09-20 — Fichier compagnon (v1.1.0)
+
+- **Sauvegarde automatique** : nouveau module `AutoSave` (File System Access API). Configuration → onglet **Données** → « Choisir un fichier… » ; le board est écrit dans ce fichier après chaque modification (debounce 800 ms), au format `exportJSON()` (`{state, streak}`), **sans la clé API**. Flush aussi quand l'onglet passe en arrière-plan.
+- **Handle persistant** : `FileSystemFileHandle` conservé en IndexedDB (base `kanbanjs`, store `handles`) avec `lastWriteAt`. Helpers IndexedDB réécrits avec cycle de vie de transaction (`oncomplete`/`onabort`), fermeture de connexion et **timeout de 8 s** pour qu'IndexedDB ne puisse jamais bloquer l'app. Un `_store` swappable rend le module testable sans IndexedDB.
+- **Restauration en un clic** : au boot, si les données locales ont disparu (`DB.loadSource() === 'default'`) et qu'un handle existe → bandeau « Vos données ont disparu — Restaurer ? ». Un clic → `requestPermission` → lecture → `DB.importJSON()` → `_rebuild()`.
+- **Multi-machine** : si le fichier est plus récent que la dernière écriture locale (`file.lastModified > lastWriteAt`), bandeau « Recharger ? ». Jamais d'écrasement silencieux dans un sens comme dans l'autre. Coût assumé : un clic « 💾 Réactiver » par session Chromium, la permission ne survivant pas.
+- **États et UI** : `unsupported` | `idle` | `active` | `paused` | `error`. Puce discrète dans le header (`💾 Réactiver`, `⚠ Sauvegarde en échec`), invisible quand tout va bien.
+- **`DB`** : `onSave(cb)` (notifié par `_save()`), `loadSource()` (`state` | `backup` | `default`), `_isValidState()` réutilisée par `importJSON`/`restoreJSON`.
+- **Relecture en contexte neuf — 4 correctifs majeurs** : (1) tant qu'un bandeau est affiché, **plus aucune écriture** n'a lieu ; sans cela, la première frappe après un « Ignorer » écrasait la seule sauvegarde existante — et « Ignorer » demande désormais confirmation ; (2) `attach()` valide le fichier **avant** d'armer le handle : un fichier choisi par erreur n'est plus écrasé ; (3) compteur de génération `_gen` : `disable()` pendant une écriture laisse l'état `idle`, jamais `active` ; (4) drapeau `_dirty` : une écriture déclenchée pendant un flush en vol est rejouée au lieu d'être perdue.
+- **Correctifs mineurs de la même relecture** : messages honnêtes selon l'état (`enable`/`attach`/« Sauvegarder maintenant ») ; permission `denied` distinguée et expliquée ; `_lastWriteAt` initialisé à `file.lastModified` après attachement (plus de bandeau « plus récent » fantôme) ; `init()` protégé par la génération ; `_persist()` non silencieux (avertissement console) ; le bandeau ne rogne plus le bas des listes (`calc(100vh - 133px)`) ; « Configurer l'IA » ouvre l'onglet Système ; la confirmation de reset mentionne le fichier qui sera écrasé ; `AutoSave._test` gaté derrière `?test` ; `refreshPending()` après une sync (cas d'un `localStorage.clear()` distant).
+- **Tests** : 34 → 50 assertions (écriture différée, format sans clé API, restauration après perte, permission requise, désactivation, écriture bloquée pendant une décision, fichier invalide non armé, écriture concurrente non perdue, désactivation pendant une écriture). Hooks : `autoSaveMock`, `autoSaveFile`, `autoSaveState`, `autoSaveFlush`, `autoSaveRestore`, `autoSaveResume`, `autoSaveSetFile`, `autoSaveAttachWith`, `autoSaveBadFile`, `autoSaveDismiss`, `autoSaveFlushAsync`, `autoSaveFileName`, `autoSaveDisable`, `loadSource`. Campagnes de vérification hors suite (fichiers temporaires, non committés) : sync multi-onglets à deux iframes 4/4, UI du fichier compagnon 12/12.
+- **Limites documentées** : écriture non atomique (`createWritable` tronque avant d'écrire) ; repli Safari/Firefox non implémenté ; conflits = dernier écrivain gagne ; détection externe fiable à ~1 s près (granularité du système de fichiers et dérive d'horloge entre machines).
+- **Service worker** : cache bumpé `kanbanjs-v3` → `v4`. `VERSION` 1.1.0.
 
 ### 2026-09-20 — Robustesse de la persistance (v1.0.2)
 

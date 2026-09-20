@@ -267,6 +267,134 @@ async function run() {
     assert('Copie de secours corrompue re-semée', false, e.message);
   }
 
+  // ── 14. Fichier compagnon — écriture automatique ────────────
+  try {
+    await send('autoSaveMock', { mode: 'granted' });
+    const lists = await send('getLists');
+    const backlog = lists.find(l => l.title === 'Backlog');
+    await send('createCard', { listId: backlog.id, text: 'Carte compagnon' });
+    await new Promise(r => setTimeout(r, 1200));
+    const raw = await send('autoSaveFile');
+    let parsed = null;
+    try { parsed = JSON.parse(raw); } catch (_) {}
+    assert('Écriture automatique différée dans le fichier',
+      !!parsed && parsed.state.cards.some(c => c.text === 'Carte compagnon'),
+      'raw = ' + String(raw).slice(0, 80));
+    assert('Fichier compagnon inclut le streak', !!parsed && 'streak' in parsed);
+    assert('Fichier compagnon exclut la clé API', !!raw && raw.indexOf('apiKey') === -1);
+  } catch (e) {
+    assert('Fichier compagnon — écriture automatique', false, e.message);
+  }
+
+  // ── 15. Fichier compagnon — restauration après perte ────────
+  try {
+    await send('autoSaveMock', { mode: 'granted' });
+    const lists = await send('getLists');
+    const backlog = lists.find(l => l.title === 'Backlog');
+    await send('createCard', { listId: backlog.id, text: 'Carte à retrouver' });
+    await send('autoSaveFlush');
+
+    await send('corruptState');
+    await send('corruptBackup');
+    await send('reload');
+    const src = await send('loadSource');
+    assert('Perte de données détectée', src === 'default', 'source = ' + src);
+
+    const ok = await send('autoSaveRestore');
+    const cards = await send('getBoardCards');
+    assert('Restauration depuis le fichier compagnon',
+      ok === true && cards.some(c => c.text === 'Carte à retrouver'), 'ok = ' + ok);
+  } catch (e) {
+    assert('Fichier compagnon — restauration', false, e.message);
+  }
+
+  // ── 16. Fichier compagnon — permission requise ──────────────
+  try {
+    await send('autoSaveMock', { mode: 'prompt' });
+    const st = await send('autoSaveState');
+    assert('Permission en attente → sauvegarde en pause', st === 'paused', 'état = ' + st);
+    const ok = await send('autoSaveFlush');
+    assert('Aucune écriture sans permission', ok === false, 'flush = ' + ok);
+    await send('autoSaveDisable');
+    const st2 = await send('autoSaveState');
+    assert('Désactivation → sauvegarde inactive', st2 === 'idle', 'état = ' + st2);
+  } catch (e) {
+    assert('Fichier compagnon — permission', false, e.message);
+  }
+
+  // ── 17. Fichier compagnon — aucune écriture tant qu'une décision est en attente ──
+  try {
+    await send('autoSaveMock', { mode: 'granted' });
+    const payload = JSON.parse(await send('export'));
+    payload.state.board.name = 'Version externe';
+    await send('autoSaveSetFile', { text: JSON.stringify(payload), modified: Date.now() + 60000 });
+    const resumed = await send('autoSaveResume');
+    assert('Fichier externe plus récent détecté', resumed === true, 'resume = ' + resumed);
+
+    const before = await send('autoSaveFile');
+    const lists = await send('getLists');
+    const backlog = lists.find(l => l.title === 'Backlog');
+    await send('createCard', { listId: backlog.id, text: 'NE-DOIT-PAS-ETRE-ECRIT' });
+    await new Promise(r => setTimeout(r, 1200));
+    const after = await send('autoSaveFile');
+    assert('Aucune écriture tant que la décision est en attente', after === before,
+      'le fichier a été écrasé');
+
+    await send('autoSaveDismiss');
+    await send('autoSaveFlush');
+    const afterDismiss = await send('autoSaveFile');
+    assert('Écriture reprise après décision',
+      afterDismiss !== before && afterDismiss.indexOf('NE-DOIT-PAS-ETRE-ECRIT') !== -1);
+  } catch (e) {
+    assert('Fichier compagnon — écriture bloquée', false, e.message);
+  }
+
+  // ── 18. Fichier compagnon — un fichier invalide n'est jamais armé ──
+  try {
+    await send('autoSaveMock', { mode: 'granted' });
+    const ok = await send('autoSaveAttachWith', { text: 'PAS-DU-JSON' });
+    assert('Attach d\'un fichier invalide refusé', ok === false, 'ok = ' + ok);
+
+    const lists = await send('getLists');
+    const backlog = lists.find(l => l.title === 'Backlog');
+    await send('createCard', { listId: backlog.id, text: 'Carte après échec' });
+    await new Promise(r => setTimeout(r, 1200));
+    const bad = await send('autoSaveBadFile');
+    assert('Le fichier refusé n\'est pas écrasé', bad === 'PAS-DU-JSON', 'contenu = ' + bad);
+  } catch (e) {
+    assert('Fichier compagnon — fichier invalide', false, e.message);
+  }
+
+  // ── 19. Fichier compagnon — écriture concurrente non perdue ──
+  try {
+    await send('autoSaveMock', { mode: 'slow' });
+    const lists = await send('getLists');
+    const backlog = lists.find(l => l.title === 'Backlog');
+    await send('createCard', { listId: backlog.id, text: 'ECRITURE-V1' });
+    await new Promise(r => setTimeout(r, 900));
+    await send('createCard', { listId: backlog.id, text: 'ECRITURE-V2' });
+    await new Promise(r => setTimeout(r, 3200));
+    const raw = await send('autoSaveFile');
+    assert('Écriture concurrente non perdue', raw.indexOf('ECRITURE-V2') !== -1,
+      'V2 absente du fichier');
+  } catch (e) {
+    assert('Fichier compagnon — écriture concurrente', false, e.message);
+  }
+
+  // ── 20. Fichier compagnon — désactivation pendant une écriture ──
+  try {
+    await send('autoSaveMock', { mode: 'slow' });
+    await send('autoSaveFlushAsync');
+    await send('autoSaveDisable');
+    await new Promise(r => setTimeout(r, 2200));
+    const st = await send('autoSaveState');
+    const name = await send('autoSaveFileName');
+    assert('Désactivation pendant une écriture → inactive', st === 'idle', 'état = ' + st);
+    assert('Aucun fichier conservé après désactivation', name === '', 'fichier = ' + name);
+  } catch (e) {
+    assert('Fichier compagnon — désactivation', false, e.message);
+  }
+
   // ── Résumé ──────────────────────────────────────────────────
   const total = pass + fail;
   const summary = document.createElement('div');

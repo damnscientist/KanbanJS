@@ -283,6 +283,49 @@
     .streak-badge.show { display: inline; }
     .streak-badge.paused { opacity: .4; }
 
+    .autosave-chip {
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      background: rgba(var(--accent-rgb), .12);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      border: 1px solid rgba(var(--accent-rgb), .3);
+      border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+      border-radius: 999px;
+      padding: 3px 10px;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      animation: fadeIn .2s ease;
+    }
+    .autosave-chip[hidden] { display: none; }
+    .autosave-chip:hover { background: rgba(var(--accent-rgb), .2); background: color-mix(in srgb, var(--accent) 20%, transparent); }
+    .autosave-chip.warn {
+      color: var(--danger);
+      background: color-mix(in srgb, var(--danger) 12%, transparent);
+      border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+    }
+
+    .restore-banner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 24px;
+      font-size: 13px;
+      color: var(--text);
+      background: rgba(var(--accent-rgb), .1);
+      background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+      border-bottom: 1px solid rgba(var(--accent-rgb), .3);
+      border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+      flex-shrink: 0;
+      z-index: 9;
+      animation: fadeIn .2s ease;
+    }
+    .restore-banner[hidden] { display: none; }
+    .restore-text { flex: 1; }
+    .restore-banner:not([hidden]) ~ #board .list { max-height: calc(100vh - 133px); }
+
     @keyframes progressPulse {
       0%   { filter: brightness(1); }
       50%  { filter: brightness(2); }
@@ -875,6 +918,22 @@
     .cfg-status.success { color: var(--accent); }
     .cfg-status.error   { color: var(--danger); }
 
+    .field-help {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--text-dim);
+    }
+
+    .autosave-status {
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text-muted);
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+    }
+
     /* ─── FAB (floating action button) ────────────────────────────────────── */
     .fab {
       position: fixed;
@@ -1177,6 +1236,7 @@
       .card, .list { animation: none; }
       .progress-fill { transition: none; }
       .fab { transition: none; }
+      .autosave-chip, .restore-banner { animation: none; }
     }
   </style>
 </head>
@@ -1190,6 +1250,7 @@
     </div>
     <span class="progress-pct" id="progressPct"></span>
     <span class="streak-badge" id="streakBadge"></span>
+    <button class="autosave-chip" id="autosaveChip" hidden aria-label="Sauvegarde automatique"></button>
     <span class="spacer"></span>
     <span class="header-actions">
     <button class="btn-icon" id="themeToggle" title="Changer le thème" aria-label="Changer le thème">&#9788;</button>
@@ -1203,6 +1264,12 @@
     <span class="header-info" id="headerInfo"></span>
   </header>
 
+  <div class="restore-banner" id="restoreBanner" hidden>
+    <span class="restore-text" id="restoreText"></span>
+    <button class="btn btn-primary" id="restoreAccept">Restaurer</button>
+    <button class="btn btn-ghost" id="restoreDismiss">Ignorer</button>
+  </div>
+
   <button class="fab" id="decomposeFab" title="Décomposer une tâche (IA)" aria-label="Décomposer une tâche (IA)">+</button>
 
   <div class="modal-overlay" id="configModal">
@@ -1214,6 +1281,7 @@
       <div class="modal-tabs">
         <button class="modal-tab active" data-tab="system">Système</button>
         <button class="modal-tab" data-tab="themes">Thèmes</button>
+        <button class="modal-tab" data-tab="data">Données</button>
       </div>
       <div class="modal-body">
         <div class="tab-content active" id="tab-system">
@@ -1269,6 +1337,26 @@
             <button class="btn btn-primary" id="cfgSaveTheme">Sauver</button>
             <span class="cfg-status" id="cfgThemeStatus"></span>
           </div>
+        </div>
+        <div class="tab-content" id="tab-data">
+          <div class="field">
+            <span class="field-label">Sauvegarde automatique</span>
+            <span class="field-help">
+              Écrit votre board dans un fichier que vous choisissez, à chaque modification.
+              Utile pour survivre à un effacement du navigateur — et pour synchroniser plusieurs
+              machines en rangeant ce fichier dans un dossier Drive, Dropbox ou Syncthing.
+            </span>
+          </div>
+          <div class="autosave-status" id="autosaveStatus"></div>
+          <div class="modal-actions">
+            <button class="btn btn-primary" id="autosaveEnable">Choisir un fichier…</button>
+            <button class="btn btn-ghost" id="autosaveNow">Sauvegarder maintenant</button>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-ghost" id="autosaveAttach">Ouvrir un fichier existant…</button>
+            <button class="btn btn-ghost" id="autosaveDisable">Désactiver</button>
+          </div>
+          <span class="cfg-status" id="autosaveMsg"></span>
         </div>
       </div>
     </div>
@@ -1436,6 +1524,8 @@ const DB = (() => {
   let _state;
   let _saving = true;
   let _prevJson = null;
+  let _loadSource = 'default';
+  let _onSave = null;
 
   // ── Persistence ───────────────────────────────────────────
   function _isValidState(parsed) {
@@ -1449,6 +1539,7 @@ const DB = (() => {
       try {
         const parsed = JSON.parse(raw);
         if (_isValidState(parsed)) {
+          _loadSource = 'state';
           try {
             let bakOk = false;
             const cur = localStorage.getItem(KEY_BAK);
@@ -1469,11 +1560,13 @@ const DB = (() => {
         if (_isValidState(parsed)) {
           try { localStorage.setItem(KEY, bak); } catch (_) {}
           console.warn('KanbanJS : état restauré depuis la copie de secours.');
+          _loadSource = 'backup';
           return parsed;
         }
       }
     } catch (_) {}
     const fresh = JSON.parse(JSON.stringify(_default));
+    _loadSource = 'default';
     if (raw !== null) {
       try { localStorage.setItem(KEY, JSON.stringify(fresh)); } catch (_) {}
       console.warn('KanbanJS : sauvegarde principale et copie de secours illisibles, board réinitialisé.');
@@ -1490,6 +1583,7 @@ const DB = (() => {
         try { localStorage.setItem(KEY_BAK, _prevJson); } catch (_) {}
       }
       _prevJson = json;
+      if (_onSave) { try { _onSave(); } catch (_) {} }
       const banner = document.getElementById('quotaWarn');
       if (banner) banner.remove();
     } catch (e) {
@@ -1636,6 +1730,10 @@ const DB = (() => {
       try { return await fn(); } finally { _saving = true; _save(); }
     },
 
+    // ── Hooks ───────────────────────────────────────────────
+    onSave(cb)   { _onSave = cb; },
+    loadSource() { return _loadSource; },
+
     // ── Export / Import / Reset ──────────────────────────────
     async exportJSON() {
       let streak = null;
@@ -1677,6 +1775,338 @@ const DB = (() => {
       if (state) { _state = state; _save(); }
     },
   };
+})();
+
+/* ============================================================
+   AUTO-SAVE — fichier compagnon (File System Access API)
+   L'app apporte le mécanisme, l'utilisateur apporte le stockage.
+   ============================================================ */
+const AutoSave = (() => {
+  const IDB_NAME  = 'kanbanjs';
+  const IDB_STORE = 'handles';
+  const IDB_KEY   = 'companion';
+  const FILE_NAME = 'kanbanjs-board.json';
+  const DEBOUNCE  = 800;
+
+  const FILE_TYPES = [{ description: 'Sauvegarde KanbanJS', accept: { 'application/json': ['.json'] } }];
+
+  let _handle = null;
+  let _lastWriteAt = 0;
+  let _timer = null;
+  let _state = 'idle';
+  let _pending = null;
+  let _flushing = false;
+  let _dirty = false;
+  let _gen = 0;
+  let _onChange = null;
+  let _mockStore = null;
+  let _mockBad = null;
+
+  // ── IndexedDB ─────────────────────────────────────────────
+  const IDB_TIMEOUT = 8000;
+
+  function _idb() {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) { reject(new Error('IndexedDB indisponible')); return; }
+      const timer = setTimeout(() => reject(new Error('IndexedDB trop lent')), IDB_TIMEOUT);
+      const req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = () => {
+        if (!req.result.objectStoreNames.contains(IDB_STORE)) req.result.createObjectStore(IDB_STORE);
+      };
+      req.onsuccess = () => { clearTimeout(timer); resolve(req.result); };
+      req.onerror   = () => { clearTimeout(timer); reject(req.error); };
+      req.onblocked = () => { clearTimeout(timer); reject(new Error('IndexedDB bloquée')); };
+    });
+  }
+
+  async function _idbRun(mode, fn) {
+    const db = await _idb();
+    try {
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, mode);
+        let result;
+        const timer = setTimeout(() => reject(new Error('IndexedDB trop lent')), IDB_TIMEOUT);
+        tx.oncomplete = () => { clearTimeout(timer); resolve(result); };
+        tx.onabort    = () => { clearTimeout(timer); reject(tx.error || new Error('Transaction interrompue')); };
+        tx.onerror    = () => { clearTimeout(timer); reject(tx.error || new Error('Transaction échouée')); };
+        fn(tx.objectStore(IDB_STORE), v => { result = v; });
+      });
+    } finally {
+      db.close();
+    }
+  }
+
+  const _idbGet = key => _idbRun('readonly', (store, set) => {
+    const req = store.get(key);
+    req.onsuccess = () => set(req.result);
+  });
+
+  const _idbSet = (key, val) => _idbRun('readwrite', (store) => {
+    store.put(val, key);
+  });
+
+  const _idbDel = key => _idbRun('readwrite', (store) => {
+    store.delete(key);
+  });
+
+  const _mem = {};
+  const _memStore = {
+    get: async key => _mem[key],
+    set: async (key, val) => { _mem[key] = val; },
+    del: async key => { delete _mem[key]; },
+  };
+
+  let _store = { get: _idbGet, set: _idbSet, del: _idbDel };
+
+  // ── État ──────────────────────────────────────────────────
+  function _notify() {
+    if (_onChange) { try { _onChange(); } catch (_) {} }
+  }
+
+  function _set(s) {
+    if (_state === s) return;
+    _state = s;
+    _notify();
+  }
+
+  function _setPending(p) {
+    if (_pending === p) return;
+    _pending = p;
+    _notify();
+  }
+
+  async function _permission() {
+    if (!_handle) return 'denied';
+    try { return await _handle.queryPermission({ mode: 'readwrite' }); }
+    catch (_) { return 'denied'; }
+  }
+
+  function _persist() {
+    if (!_handle) return Promise.resolve();
+    return _store.set(IDB_KEY, { handle: _handle, lastWriteAt: _lastWriteAt })
+      .catch(e => { console.warn('KanbanJS : handle de sauvegarde non persist\u00e9.', e); });
+  }
+
+  async function _externalNewer() {
+    if (!_handle) return false;
+    try {
+      const file = await _handle.getFile();
+      return file.lastModified > _lastWriteAt + 1000;
+    } catch (_) { return false; }
+  }
+
+  async function _readInto(handle) {
+    const h = handle || _handle;
+    if (!h) return 0;
+    try {
+      const file = await h.getFile();
+      await DB.importJSON(await file.text());
+      return file.lastModified || Date.now();
+    } catch (_) { return 0; }
+  }
+
+  // ── Cycle de vie ──────────────────────────────────────────
+  function available() {
+    return typeof window.showSaveFilePicker === 'function' && !!window.indexedDB;
+  }
+
+  async function init() {
+    DB.onSave(() => schedule());
+    if (!available()) { _set('unsupported'); return; }
+    const gen = ++_gen;
+    let rec = null;
+    try { rec = await _store.get(IDB_KEY); }
+    catch (_) { if (gen === _gen && !_handle) _set('error'); return; }
+    if (gen !== _gen) return;
+    if (!rec || !rec.handle) { _set('idle'); return; }
+    _handle = rec.handle;
+    _lastWriteAt = rec.lastWriteAt || 0;
+    const perm = await _permission();
+    if (gen !== _gen) return;
+    _set(perm === 'granted' ? 'active' : 'paused');
+    if (DB.loadSource() === 'default') _setPending('restore');
+    else if (perm === 'granted' && await _externalNewer()) _setPending('reload');
+  }
+
+  async function enable() {
+    if (!available()) { _set('unsupported'); return false; }
+    let handle = null;
+    try { handle = await window.showSaveFilePicker({ suggestedName: FILE_NAME, types: FILE_TYPES }); }
+    catch (_) { return false; }
+    _handle = handle;
+    _lastWriteAt = 0;
+    _setPending(null);
+    _set('active');
+    await _persist();
+    return await flush();
+  }
+
+  async function attach(picked) {
+    if (!picked) {
+      if (typeof window.showOpenFilePicker !== 'function') return false;
+      try { [picked] = await window.showOpenFilePicker({ types: FILE_TYPES, multiple: false }); }
+      catch (_) { return false; }
+    }
+    const modified = await _readInto(picked);
+    if (!modified) return false;
+    _handle = picked;
+    _lastWriteAt = modified;
+    _setPending(null);
+    const perm = await _permission();
+    _set(perm === 'granted' ? 'active' : 'paused');
+    await _persist();
+    await flush();
+    return true;
+  }
+
+  async function disable() {
+    _gen++;
+    clearTimeout(_timer);
+    _handle = null;
+    _lastWriteAt = 0;
+    _dirty = false;
+    try { await _store.del(IDB_KEY); } catch (_) {}
+    _setPending(null);
+    _set('idle');
+  }
+
+  async function resume() {
+    if (!_handle) return false;
+    const gen = _gen;
+    let perm = 'denied';
+    try { perm = await _handle.requestPermission({ mode: 'readwrite' }); } catch (_) {}
+    if (gen !== _gen || !_handle) return false;
+    if (perm !== 'granted') { _set('paused'); return false; }
+    _set('active');
+    if (await _externalNewer()) { _setPending('reload'); return true; }
+    _setPending(null);
+    await flush();
+    return true;
+  }
+
+  async function restore() {
+    if (!_handle) return false;
+    if (await _permission() !== 'granted') {
+      let perm = 'denied';
+      try { perm = await _handle.requestPermission({ mode: 'readwrite' }); } catch (_) {}
+      if (perm !== 'granted') return false;
+    }
+    const modified = await _readInto(_handle);
+    if (!modified) return false;
+    _lastWriteAt = modified;
+    _setPending(null);
+    _set('active');
+    await flush();
+    return true;
+  }
+
+  async function flush() {
+    if (!_handle || _pending) return false;
+    if (_flushing) { _dirty = true; return false; }
+    clearTimeout(_timer);
+    _dirty = false;
+    _flushing = true;
+    const gen = _gen;
+    try {
+      if (await _permission() !== 'granted') { if (gen === _gen) _set('paused'); return false; }
+      const json = await DB.exportJSON();
+      const writable = await _handle.createWritable();
+      await writable.write(json);
+      await writable.close();
+      if (gen !== _gen || !_handle) return false;
+      _lastWriteAt = Date.now();
+      await _persist();
+      if (gen !== _gen) return false;
+      _set('active');
+      return true;
+    } catch (_) {
+      if (gen === _gen) _set('error');
+      return false;
+    } finally {
+      _flushing = false;
+      if (_dirty) schedule();
+    }
+  }
+
+  function schedule() {
+    if (!_handle || _pending) return;
+    _dirty = true;
+    clearTimeout(_timer);
+    _timer = setTimeout(flush, DEBOUNCE);
+  }
+
+  function dismiss() {
+    _setPending(null);
+    schedule();
+  }
+
+  function refreshPending() {
+    if (!_handle) return;
+    if (DB.loadSource() === 'default') _setPending('restore');
+  }
+
+  const api = {
+    init, enable, attach, disable, resume, restore, flush, schedule, dismiss, refreshPending, available,
+    fileName: () => (_handle && _handle.name) || '',
+    status: () => _state,
+    pending: () => _pending,
+    lastWriteAt: () => _lastWriteAt,
+    permission: () => _permission(),
+    onChange: cb => { _onChange = cb; },
+  };
+
+  if (new URLSearchParams(location.search).has('test')) {
+    api._test = {
+      inject(mode) {
+        _gen++;
+        _dirty = false;
+        for (const k in _mem) delete _mem[k];
+        _store = _memStore;
+        _mockStore = { text: '', modified: 0 };
+        _handle = {
+          name: 'mock.json',
+          queryPermission: async () => (mode === 'prompt' ? 'prompt' : 'granted'),
+          requestPermission: async () => (mode === 'prompt' ? 'denied' : 'granted'),
+          getFile: async () => ({ lastModified: _mockStore.modified, text: async () => _mockStore.text }),
+          createWritable: async () => ({
+            write: async text => { _mockStore.text = text; },
+            close: async () => {
+              if (mode === 'slow') await new Promise(r => setTimeout(r, 1200));
+              _mockStore.modified = Date.now();
+            },
+          }),
+        };
+        _lastWriteAt = 0;
+        _state = 'idle';
+        _set(mode === 'prompt' ? 'paused' : 'active');
+        _setPending(null);
+        return true;
+      },
+      file() { return _mockStore ? _mockStore.text : null; },
+      setFile(text, modified) {
+        if (!_mockStore) _mockStore = { text: '', modified: 0 };
+        _mockStore.text = text;
+        _mockStore.modified = modified || Date.now();
+      },
+      attachWith(text) {
+        const bad = { text, modified: Date.now() };
+        _mockBad = bad;
+        return attach({
+          name: 'mauvais.json',
+          queryPermission: async () => 'granted',
+          requestPermission: async () => 'granted',
+          getFile: async () => ({ lastModified: bad.modified, text: async () => bad.text }),
+          createWritable: async () => ({
+            write: async t => { bad.text = t; },
+            close: async () => { bad.modified = Date.now(); },
+          }),
+        });
+      },
+      badFile() { return _mockBad ? _mockBad.text : null; },
+    };
+  }
+
+  return api;
 })();
 
 /* ============================================================
@@ -2961,7 +3391,7 @@ const App = (() => {
   }
 
   // ── CONFIG MODAL ───────────────────────────────────────────
-  (() => {
+  const ConfigModal = (() => {
     const CFG_KEY    = 'kanbanjs:config';
     const overlay    = document.getElementById('configModal');
     const providerEl = document.getElementById('cfgProvider');
@@ -2974,14 +3404,13 @@ const App = (() => {
     const lightSel   = document.getElementById('cfgLightTheme');
 
     // ── Tabs ──────────────────────────────────────────────────
+    function activateTab(name) {
+      document.querySelectorAll('#configModal .modal-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+      document.querySelectorAll('#configModal .tab-content').forEach(tc => tc.classList.toggle('active', tc.id === 'tab-' + name));
+    }
+
     document.querySelectorAll('#configModal .modal-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('#configModal .modal-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('#configModal .tab-content').forEach(tc => tc.classList.remove('active'));
-        tab.classList.add('active');
-        const target = document.getElementById('tab-' + tab.dataset.tab);
-        if (target) target.classList.add('active');
-      });
+      tab.addEventListener('click', () => activateTab(tab.dataset.tab));
     });
 
     // ── Helpers ──────────────────────────────────────────────
@@ -2995,7 +3424,7 @@ const App = (() => {
       keyEl.closest('.field').style.display      = isOllama ? 'none' : '';
     }
 
-    function open() {
+    function open(tabName) {
       const cfg = readAIConfig();
       providerEl.value = cfg && cfg.provider ? cfg.provider : 'openai';
       endpointEl.value = cfg && cfg.endpoint ? cfg.endpoint : '';
@@ -3008,6 +3437,8 @@ const App = (() => {
         lightSel.value = Theme.light;
       }
       overlay.classList.add('open');
+      if (tabName) activateTab(tabName);
+      if (tabName === 'data') { refreshAutoSaveUI(); return; }
       if (providerEl.value === 'ollama') modelEl.focus();
       else endpointEl.focus();
     }
@@ -3016,7 +3447,7 @@ const App = (() => {
       overlay.classList.remove('open');
     }
 
-    document.getElementById('configBtn').addEventListener('click', open);
+    document.getElementById('configBtn').addEventListener('click', () => open());
     document.getElementById('configModalClose').addEventListener('click', close);
     registerOverlay(overlay, close);
 
@@ -3051,11 +3482,15 @@ const App = (() => {
       Theme.light = l;
       flashMessage(themeStatusEl, 'Thèmes sauvegardés.', 'success', 3000);
     });
+
+    return { open };
   })();
 
   // ── RESET ──────────────────────────────────────────────────
   document.getElementById('resetBtn').addEventListener('click', async () => {
-    if (confirm('Remettre le board à zéro ? Toutes les données seront perdues.')) {
+    const file = AutoSave.fileName();
+    const extra = file ? '\n\n\u26A0 La sauvegarde automatique « ' + file + ' » sera aussi écrasée.' : '';
+    if (confirm('Remettre le board à zéro ? Toutes les données seront perdues.' + extra)) {
       await DB.reset();
       await _rebuild();
     }
@@ -3116,6 +3551,168 @@ const App = (() => {
       reader.readAsText(file);
     });
   })();
+
+  // ── AUTO-SAVE UI ───────────────────────────────────────────
+  const autosaveChip       = document.getElementById('autosaveChip');
+  const restoreBanner      = document.getElementById('restoreBanner');
+  const restoreTextEl      = document.getElementById('restoreText');
+  const restoreAcceptBtn   = document.getElementById('restoreAccept');
+  const restoreDismissBtn  = document.getElementById('restoreDismiss');
+  const autosaveStatusEl   = document.getElementById('autosaveStatus');
+  const autosaveMsgEl      = document.getElementById('autosaveMsg');
+  const autosaveEnableBtn  = document.getElementById('autosaveEnable');
+  const autosaveAttachBtn  = document.getElementById('autosaveAttach');
+  const autosaveNowBtn     = document.getElementById('autosaveNow');
+  const autosaveDisableBtn = document.getElementById('autosaveDisable');
+
+  const AUTOSAVE_LABELS = {
+    unsupported: 'Indisponible sur ce navigateur',
+    idle: 'Inactive',
+    active: 'Active',
+    paused: 'En pause',
+    error: 'En échec',
+  };
+
+  function ago(ts) {
+    if (!ts) return '';
+    const s = Math.round((Date.now() - ts) / 1000);
+    if (s < 60) return "à l'instant";
+    if (s < 3600) return 'il y a ' + Math.round(s / 60) + ' min';
+    if (s < 86400) return 'il y a ' + Math.round(s / 3600) + ' h';
+    return 'il y a ' + Math.round(s / 86400) + ' j';
+  }
+
+  function refreshAutoSaveUI() {
+    const st = AutoSave.status();
+    const pending = AutoSave.pending();
+    const file = AutoSave.fileName();
+
+    if (st === 'paused') {
+      autosaveChip.hidden = false;
+      autosaveChip.textContent = '\uD83D\uDCBE Réactiver';
+      autosaveChip.title = 'Relancer la sauvegarde automatique dans ' + file;
+      autosaveChip.classList.remove('warn');
+    } else if (st === 'error') {
+      autosaveChip.hidden = false;
+      autosaveChip.textContent = '\u26A0 Sauvegarde en échec';
+      autosaveChip.title = 'La sauvegarde automatique a échoué — cliquer pour ouvrir la configuration';
+      autosaveChip.classList.add('warn');
+    } else {
+      autosaveChip.hidden = true;
+    }
+
+    if (pending && file) {
+      restoreBanner.hidden = false;
+      if (pending === 'reload') {
+        restoreTextEl.textContent = '\uD83D\uDD04 « ' + file + ' » a été modifié ailleurs et est plus récent que ce board.';
+        restoreAcceptBtn.textContent = 'Recharger';
+      } else {
+        restoreTextEl.textContent = '\u26A0 Vos données locales ont disparu. Une sauvegarde « ' + file + ' » existe.';
+        restoreAcceptBtn.textContent = 'Restaurer';
+      }
+    } else {
+      restoreBanner.hidden = true;
+    }
+
+    let html = AUTOSAVE_LABELS[st] || st;
+    if (file) html += ' \u2014 ' + esc(file);
+    const last = AutoSave.lastWriteAt();
+    if (last) html += '<br>Dernière écriture : ' + ago(last);
+    if (pending) html += '<br>\u23F3 En attente de votre décision : la sauvegarde est suspendue.';
+    if (st === 'unsupported') {
+      html = 'Indisponible sur ce navigateur (Chrome, Edge et Opera le proposent).<br>Utilisez l\u2019export JSON (\u2193) pour sauvegarder manuellement.';
+    }
+    autosaveStatusEl.innerHTML = html;
+
+    const configured = !!file;
+    autosaveEnableBtn.textContent = configured ? 'Changer de fichier…' : 'Choisir un fichier…';
+    autosaveEnableBtn.disabled   = st === 'unsupported';
+    autosaveAttachBtn.disabled   = st === 'unsupported';
+    autosaveNowBtn.disabled      = !configured || !!pending;
+    autosaveDisableBtn.disabled  = !configured;
+  }
+
+  autosaveChip.addEventListener('click', async () => {
+    if (AutoSave.status() === 'paused') {
+      const ok = await AutoSave.resume();
+      refreshAutoSaveUI();
+      if (ok && !AutoSave.pending()) flashMessage(headerInfoEl, 'Sauvegarde automatique relancée.', 'success', 3000);
+      else if (!ok) {
+        const perm = await AutoSave.permission();
+        flashMessage(headerInfoEl, perm === 'denied'
+          ? 'Autorisation bloquée pour ce site \u2014 r\u00e9activez-la dans les r\u00e9glages du navigateur.'
+          : 'Autorisation refus\u00e9e.', 'error', 5000);
+      }
+      return;
+    }
+    ConfigModal.open('data');
+  });
+
+  autosaveEnableBtn.addEventListener('click', async () => {
+    const ok = await AutoSave.enable();
+    const st = AutoSave.status();
+    if (ok) flashMessage(autosaveMsgEl, 'Sauvegarde automatique activée.', 'success', 3000);
+    else if (!AutoSave.available()) flashMessage(autosaveMsgEl, 'Non pris en charge par ce navigateur.', 'error', 4000);
+    else if (st === 'paused') flashMessage(autosaveMsgEl, 'Autorisation requise — cliquez sur 💾 Réactiver.', '', 5000);
+    else flashMessage(autosaveMsgEl, 'Écriture impossible dans ce fichier.', 'error', 4000);
+    refreshAutoSaveUI();
+  });
+
+  autosaveAttachBtn.addEventListener('click', async () => {
+    if (!confirm('Ouvrir un fichier de sauvegarde et remplacer le board actuel ? Les données actuelles seront perdues.')) return;
+    const ok = await AutoSave.attach();
+    if (ok) {
+      await _rebuild();
+      if (AutoSave.status() === 'active') flashMessage(autosaveMsgEl, 'Board chargé depuis le fichier.', 'success', 3000);
+      else flashMessage(autosaveMsgEl, 'Board chargé. Cliquez sur 💾 Réactiver pour autoriser l\'écriture.', '', 5000);
+    } else {
+      flashMessage(autosaveMsgEl, 'Fichier illisible ou invalide — rien n\'a été modifié.', 'error', 4000);
+    }
+    refreshAutoSaveUI();
+  });
+
+  autosaveNowBtn.addEventListener('click', async () => {
+    const ok = await AutoSave.flush();
+    const st = AutoSave.status();
+    if (ok) flashMessage(autosaveMsgEl, 'Board sauvegardé.', 'success', 3000);
+    else if (st === 'error') flashMessage(autosaveMsgEl, 'Sauvegarde impossible.', 'error', 3000);
+    else if (st === 'paused') flashMessage(autosaveMsgEl, 'Autorisation requise — cliquez sur 💾 Réactiver.', '', 4000);
+    else flashMessage(autosaveMsgEl, 'Sauvegarde en cours…', '', 3000);
+    refreshAutoSaveUI();
+  });
+
+  autosaveDisableBtn.addEventListener('click', async () => {
+    await AutoSave.disable();
+    flashMessage(autosaveMsgEl, 'Sauvegarde automatique désactivée.', 'success', 3000);
+    refreshAutoSaveUI();
+  });
+
+  restoreAcceptBtn.addEventListener('click', async () => {
+    const wasReload = AutoSave.pending() === 'reload';
+    const ok = await AutoSave.restore();
+    if (ok) {
+      await _rebuild();
+      flashMessage(headerInfoEl, wasReload ? 'Board rechargé depuis le fichier.' : 'Board restauré.', 'success', 4000);
+    } else {
+      flashMessage(headerInfoEl, 'Restauration impossible (permission refusée ou fichier invalide).', 'error', 5000);
+    }
+    refreshAutoSaveUI();
+  });
+
+  restoreDismissBtn.addEventListener('click', () => {
+    const file = AutoSave.fileName();
+    const lost = AutoSave.pending() === 'restore';
+    const msg = lost
+      ? 'Ignorer la restauration ?\n\nVotre board actuel (vide) va remplacer la sauvegarde « ' + file + ' » à la prochaine modification. Cette sauvegarde sera définitivement perdue.'
+      : 'Garder ce board ?\n\nLa sauvegarde « ' + file + ' » (plus récente) sera écrasée à la prochaine modification.';
+    if (!confirm(msg)) return;
+    AutoSave.dismiss();
+    refreshAutoSaveUI();
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') AutoSave.flush();
+  });
 
   // ── BOARD NAME ────────────────────────────────────────────
   boardNameInput.addEventListener('blur', async () => {
@@ -3548,7 +4145,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     const configLink = make('button', 'btn btn-ghost');
     configLink.textContent = '\u2699 Configurer l\u2019IA';
     configLink.style.cssText = 'font-size: 11px; padding: 2px 8px;';
-    configLink.addEventListener('click', () => { close(); document.getElementById('configBtn').click(); });
+    configLink.addEventListener('click', () => { close(); ConfigModal.open('system'); });
     gridHint.append(document.createTextNode('Ou '), configLink);
     templateGrid.appendChild(gridHint);
     modalBody.insertBefore(templateGrid, templateBanner);
@@ -4201,6 +4798,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     try {
       _saveStack(UK, []); _saveStack(RK, []); _saveStack(UKS, []); _saveStack(RKS, []);
       await DB.reload();
+      AutoSave.refreshPending();
       if (_editingActive()) {
         _storageTimer = setTimeout(_syncFromStorage, 200);
         return;
@@ -4247,6 +4845,9 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     try {
       await _rebuild();
       window.addEventListener('storage', _onStorage);
+      AutoSave.onChange(refreshAutoSaveUI);
+      AutoSave.init().then(refreshAutoSaveUI);
+      refreshAutoSaveUI();
       document.getElementById('helpBtn').addEventListener('click', () => {
         document.querySelector('.cheatsheet-overlay').classList.toggle('open');
       });
@@ -4299,6 +4900,20 @@ window.__testAPI = (() => {
         case 'corruptState':   localStorage.setItem('kanbanjs:state', '{ ceci n\u2019est pas du JSON'); break;
         case 'getBackup':      result = localStorage.getItem('kanbanjs:state.bak'); break;
         case 'corruptBackup':  localStorage.setItem('kanbanjs:state.bak', 'CORROMPU'); break;
+        case 'autoSaveMock':   result = AutoSave._test.inject(args.mode); break;
+        case 'autoSaveFile':   result = AutoSave._test.file(); break;
+        case 'autoSaveState':  result = AutoSave.status(); break;
+        case 'autoSaveFlush':  result = await AutoSave.flush(); break;
+        case 'autoSaveRestore': result = await AutoSave.restore(); break;
+        case 'autoSaveResume':  result = await AutoSave.resume(); break;
+        case 'autoSaveSetFile': AutoSave._test.setFile(args.text, args.modified); break;
+        case 'autoSaveAttachWith': result = await AutoSave._test.attachWith(args.text); break;
+        case 'autoSaveBadFile': result = AutoSave._test.badFile(); break;
+        case 'autoSaveDismiss': AutoSave.dismiss(); result = true; break;
+        case 'autoSaveFlushAsync': AutoSave.flush(); result = true; break;
+        case 'autoSaveFileName': result = AutoSave.fileName(); break;
+        case 'autoSaveDisable': await AutoSave.disable(); break;
+        case 'loadSource':     result = DB.loadSource(); break;
         case 'cardCount':      result = (await DB.getAllCards()).length; break;
         case 'listCount':      result = (await DB.getLists()).length; break;
         case 'dateKey':        result = App.dateKey(new Date(args.date)); break;

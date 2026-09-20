@@ -20,6 +20,7 @@ Face à une corvée qui paraît insurmontable (« ranger mon bureau », « faire
 - **Raccourcis vim-like** : pilotage complet au clavier.
 - **Export / import JSON** : vos données restent à vous, sauvegardables en un fichier.
 - **Persistance robuste** : copie de secours automatique (le board se répare seul si la sauvegarde principale est corrompue), synchronisation entre les onglets ouverts, et stockage persistant demandé au navigateur.
+- **Sauvegarde automatique dans un fichier** (Chrome, Edge, Opera) : l'app écrit votre board dans un fichier que vous choisissez, à chaque modification. Rangez-le dans un dossier Drive / Dropbox / Syncthing pour synchroniser plusieurs machines sans compte. Si les données locales disparaissent, une bannière propose de restaurer en un clic.
 - **Fonctionne hors-ligne** après la première visite (service worker).
 
 ## Quick start
@@ -41,6 +42,16 @@ L'IA est un bonus, pas un prérequis : les templates couvrent déjà les corvée
 3. Renseignez l'endpoint, la clé API et le modèle, puis validez.
 
 La clé API est stockée en clair dans le `localStorage` de votre navigateur — elle n'est jamais envoyée qu'au fournisseur que vous avez choisi.
+
+## Sauvegarde : ce qu'il faut savoir
+
+- **Activer** : Configuration (⚙) → onglet **Données** → « Choisir un fichier… ». Le board est ensuite écrit dans ce fichier après chaque modification, au format `{state, streak}`. **La clé API n'y figure jamais.**
+- **Multi-machine** : rangez ce fichier dans un dossier synchronisé (Drive, Dropbox, Syncthing) pour retrouver votre board ailleurs, sans compte. Si le fichier est plus récent que vos données locales, l'app propose de le recharger — elle ne remplace jamais votre board sans votre accord.
+- **Tant que la bannière est affichée, la sauvegarde est suspendue** : votre fichier reste intact jusqu'à ce que vous choisissiez « Recharger » ou « Ignorer ». « Ignorer » demande confirmation, car le board local écrasera alors le fichier.
+- **Permission** : Chrome, Edge et Opera redemandent l'autorisation à chaque session. La puce `💾 Réactiver` dans l'en-tête la rétablit en un clic.
+- **Données perdues** : si le navigateur a effacé son stockage, une bannière propose de restaurer le board depuis le fichier en un clic.
+- **Conflits** : si deux machines modifient le board en même temps, le dernier écrivain gagne. Un fichier modifié ailleurs n'est détecté qu'à ~1 seconde près (granularité du disque et horloges des machines).
+- **Safari et Firefox** : non pris en charge pour l'instant. Utilisez l'export JSON (`↓`) pour sauvegarder à la main.
 
 ## Raccourcis clavier
 
@@ -77,7 +88,7 @@ Le projet est un fichier unique, sans dépendance ni bundler. Pour lancer les te
 python3 -m http.server 8000
 ```
 
-Puis ouvrez [http://localhost:8000/test.html](http://localhost:8000/test.html) (34 tests DB via iframe + postMessage).
+Puis ouvrez [http://localhost:8000/test.html](http://localhost:8000/test.html) (50 tests DB via iframe + postMessage).
 
 ## À propos du développement
 
