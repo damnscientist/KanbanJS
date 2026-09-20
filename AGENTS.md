@@ -28,7 +28,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Undo/redo 30 niveaux avec streak synchronisé, reconstruction DOM sans `location.reload()`
 - Parsing robuste du JSON IA (équilibrage bracketing, détection guillemets, strip code fences)
 - Gestion d'erreur complète : bannière `QuotaExceededError`, crash recovery dans `init()`, `AbortController` 60s
-- Tests : 26 tests DB via iframe/postMessage (`test.html`)
+- Tests : 30 tests DB via iframe/postMessage (`test.html`)
 
 **UX & design**
 - Raccourcis clavier vim-like complets : navigation h/l/j/k, actions carte/liste, recherche `Ctrl+K`, undo/redo
@@ -266,7 +266,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - **Accessibilité** : `label[for]` sur tous les champs de formulaire, `aria-label` sur les 20+ boutons (icônes header, actions carte/liste, FAB). Mise à jour dynamique des aria-labels (collapse, notes, FAB, `_toggleAllNotes`).
 - **Robustesse** : `QuotaExceededError` affiche une bannière persistante dans le header (disparaît automatiquement quand l'espace se libère). `_snapshot()` avertit via `flashMessage` quand l'undo est désactivé (board > 200 ko). `parseAITasks` gère les code fences (\`\`\`json).
 - **Correctifs** : `_rebuild()` préserve `scrollLeft`. `_confettiDone` se reset toujours après les confettis (permet plusieurs célébrations). `fuzzyMatch` dédupliqué en helper partagé. Le collapse bouton met à jour son `title`/`aria-label` au toggle.
-- **Tests** : `test.html` — 26 tests DB via iframe + postMessage (reset, listes, cartes, export/import, streak). Lancement : `python3 -m http.server`, puis `http://localhost:8000/test.html`.
+- **Tests** : `test.html` — 30 tests DB via iframe + postMessage (reset, listes, cartes, export/import, streak, dates locales). Lancement : `python3 -m http.server`, puis `http://localhost:8000/test.html`.
 - **Fichier** : ~3900 → ~4200 lignes (+300)
 
 ### 2026-07-01 — Onboarding, streak robuste, notes markdown, UX polie
