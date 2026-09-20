@@ -176,6 +176,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - **Dates** : toujours passer par `dateKey(date)` (clé `YYYY-MM-DD` **locale**) et `isToday(date)` pour toute logique de jour (streak, compteur, comparaison `doneAt`). Ne jamais utiliser `toISOString().slice(0, 10)` pour une date logique — c'est la date UTC. Seul usage légitime restant : le nom de fichier d'export.
 - Le thème est capturé au démarrage de App via `const Theme = window.__themeAPI`. Plus aucun accès à `window.__themeAPI` dans le code métier.
 - `Clipboard` est un objet (plus un `let _clipboard`), méthodes : `copyCard/cutCard/copyList/cutList/paste/clear/isEmpty/type`.
+- **Documents à tenir à jour** : toute évolution fonctionnelle ou visible du logiciel doit être répercutée dans le `README.md` (fonctionnalités, quick start, raccourcis, nombre de tests) en plus du changelog d'AGENTS.md. Le README est le seul document lu par les utilisateurs ; un README périmé est un bug de documentation.
 
 ### Architecture du code
 - L'ordre des modales et du debug suit le flow : config → décompose
