@@ -1,6 +1,6 @@
 # KanbanJS — Projet anti-procrastination
 
-Fichier unique `index.html` (~4200 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne.
+Fichier unique `index.html` (~4216 lignes) + `sw.js` (service worker, 26 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne. Publié sur GitHub Pages : https://damnscientist.github.io/KanbanJS/
 
 ## Concept
 
@@ -43,14 +43,12 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - **localStorage = perte totale au `clear` navigateur** ou changement de machine. L'export JSON existe mais est manuel, sans rappel automatique
 - **Pas de sync multi-onglets** — le dernier à écrire gagne, pas de `storage` event listener
 - **Clé API en clair** dans `localStorage` — lisible par toute extension ou script cross-origin
-- Le fichier ne fonctionne pas en `file://` (CORS bloque fetch), nécessite un serveur local
 
 **Fonctionnel**
 - Pas de **companion mobile** implémenté — `companion.md` est une spec, pas du code. La capture rapide sur mobile n'existe pas
-- Pas de **mode offline / service worker** — incohérent avec la promesse "données locales, pas de compte"
 - Pas de **dates d'échéance** sur les cartes — utile pour les freelances avec deadlines
 - Pas de **notifications** — le streak est silencieux hors de l'onglet
-- **Bug de streak (dates UTC)** — le streak, le compteur du jour et les comparaisons "terminé aujourd'hui" utilisent la date UTC (`new Date().toISOString().slice(0, 10)`) au lieu de la date locale. Une tâche terminée entre minuit et 1h-2h du matin (France) compte pour le jour UTC précédent — un utilisateur nocturne peut perdre son streak malgré un travail quotidien, précisément le scénario démotivant que l'outil veut éviter. À corriger avant publication (Roadmap P0).
+- **Bug de streak (dates UTC)** — le streak, le compteur du jour et les comparaisons "terminé aujourd'hui" utilisent la date UTC (`new Date().toISOString().slice(0, 10)`) au lieu de la date locale. Une tâche terminée entre minuit et 1h-2h du matin (France) compte pour le jour UTC précédent — un utilisateur nocturne peut perdre son streak malgré un travail quotidien, précisément le scénario démotivant que l'outil veut éviter. À corriger (Roadmap P0).
 
 **Architecture — points d'attention (non bloquants)**
 - `refreshHeaderInfo()` appelé après chaque mutation (création, suppression, move, cut/paste, toggle). Lit `getLists()` + `getAllCards()` + streak à chaque fois. Un debounce de 50ms réduirait le coût sans perte de réactivité
@@ -156,8 +154,16 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Couleurs CSS : `color-mix(in srgb, var(--accent) X%, transparent)` + fallback `rgba(var(--accent-rgb), .X)` pour compatibilité
 
 ### Limites techniques
-- **Pas de déploiement** — fichier local, provoque des erreurs CORS si ouvert en `file://` (l'API fetch y est bloquée, à servir via un serveur local)
+- **Ouverture en `file://`** : l'API IA est bloquée par CORS. L'app fonctionne en `file://` pour le board, les templates et la persistance, mais les appels IA nécessitent d'être servi en `http(s)` — d'où la publication GitHub Pages.
+- **Service worker (`sw.js`)** : cache-first, chemins relatifs (`'./'`), guard non-GET (les POST IA ne doivent pas passer par la Cache API). Enregistré dans `index.html` uniquement en `https:`. **Toute modification publiée d'`index.html` ou `sw.js` doit bumper le nom de cache (`kanbanjs-v1` → `v2`)**, sinon les visiteurs gardent l'ancienne version.
 - **Fournisseur IA centralisé** : tout le branchement fournisseur est dans `queryAI` (switch provider → body/headers/parsing)
+
+### Déploiement
+- **GitHub Pages** : https://damnscientist.github.io/KanbanJS/ (branche `main`, dossier `/ (root)`)
+- Repo : https://github.com/damnscientist/KanbanJS (public, `origin` en SSH)
+- Fichiers publiés : `index.html`, `sw.js`, `test.html`, `README.md`, `AGENTS.md`, `companion.md`, `LICENSE`, `VERSION`, `.nojekyll`
+- Fichiers de process (prompts `01`–`05`, `audit.md`, `github.md`) : non publiés, purgés de l'historique, ignorés via `.gitignore`. **Ne pas les re-tracker.**
+- Auth push : clé SSH ed25519 ajoutée au compte damnscientist. Le remote `origin` est en `git@github.com:...`
 
 ### Décisions non retenues
 - **Multi-boards** : sur-ingénierie pour un outil mono-utilisateur. Les listes séparent déjà les contextes.
@@ -197,7 +203,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 
 ### P0 — Indispensable pour un usage partagé
 
-1. **Hébergement statique** — Déployer sur GitHub Pages / Netlify / Vercel. Le fichier ne fonctionne pas en `file://` (CORS bloque fetch). Sans ça, aucun non-technicien ne peut utiliser l'outil. Alternative : un script shell/batch qui lance un serveur local (`python -m http.server`).
+1. **Hébergement statique** — Déployer sur GitHub Pages / Netlify / Vercel. Le fichier ne fonctionne pas en `file://` (CORS bloque fetch). Sans ça, aucun non-technicien ne peut utiliser l'outil. Alternative : un script shell/batch qui lance un serveur local (`python -m http.server`). ✅ **Déployé** — https://damnscientist.github.io/KanbanJS/ (branche `main`, racine, service worker actif).
 2. **Supprimer le mur de la clé API** — Demander à un utilisateur lambda de créer un compte OpenAI et coller une clé API est exactement la friction que l'outil est censé éliminer. Options : backend léger qui proxy les appels IA, intégration d'un modèle local (WebLLM / Ollama), ou mode dégradé avec templates de décomposition pré-faits (pas d'IA requise). ✅ **Templates first** — 12 corvées universelles avec matching fuzzy, grille de templates dans la modale quand l'API n'est pas configurée, FAB toujours invitant (plus de `!` rouge).
 3. **Onboarding** — La liste "Tuto" est un bon début mais ne montre pas pourquoi c'est différent d'un Trello. Ajouter une première décomposition guidée ("Essayez : ranger mon bureau") qui rend le concept tangible en 30 secondes. ✅ **Onboarding interactif** — Tuto reformulé en consignes actionnables, liste "Ranger une surface" avec 6 micro-tâches d'exemple (template réel) pour un premier drag en <10s.
 4. **Corriger le bug de streak (dates UTC)** — Voir Faiblesses. Fix : un helper unique `dateKey(date)` retournant `YYYY-MM-DD` **local** (formatage manuel `getFullYear`/`getMonth`/`getDate`, ou `toLocaleDateString('sv-SE')`), utilisé partout où `toISOString().slice(0, 10)` apparaît : `updateStreak`, `adjustStreak`, `refreshHeaderInfo` (compteur du jour, badge paused), et les comparaisons `doneAt.slice(0, 10) === today` des handlers de complétion/décomplétion (conversion de l'ISO en `Date` avant extraction de la clé locale, sinon `doneAt` reste en UTC et la comparaison décale). ~20 lignes. Ajouter un test dans `test.html` : une date construite à 23h30 locale doit donner la clé du jour local, pas celle du jour UTC.
@@ -221,7 +227,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 
 8. **Notes markdown** — ✅ **Implémenté** — cycle édition/preview/fermé, rendu complet (gras, italique, code, liens, titres, listes, ligne horizontale).
 9. **Tags** — ✅ **Implémenté** — chips par hash couleur, bouton `+ tag`, raccourci `t`, préservés au clipboard, recherchables.
-10. **Mode offline complet** — Service worker pour un fonctionnement 100% hors-ligne, cohérent avec la philosophie zéro-dépendance.
+10. **Mode offline complet** — ✅ **Implémenté** — service worker cache-first (`sw.js`), la page fonctionne hors-ligne après la première visite.
 11. **Dates d'échéance** — Champ `dueDate` sur les cartes avec indication visuelle (couleur selon proximité). Utile pour les freelances avec deadlines.
 12. **Notifications navigateur** — `Notification API` : rappel quotidien du streak ou notification quand une carte arrive dans Done. Renforce la boucle motivationnelle hors de l'onglet.
 13. **Son au clic de complétion** — Feedback auditif optionnel (toggle), renforce le sentiment d'accomplissement pour le public TDAH.
@@ -231,11 +237,20 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 
 ## Changelog
 
+### 2026-09-20 — Publication GitHub Pages (v1.0.0)
+
+- **Renommage** : `kanban.html` → `index.html` (via `git mv`), refs mises à jour dans `test.html`, `AGENTS.md`, `companion.md`.
+- **Service worker** : `sw.js` créé (cache-first, chemins relatifs `'./'`, guard non-GET), enregistré dans `index.html` en `https:` uniquement.
+- **Fichiers de publication** : `README.md` (français), `LICENSE` (MIT, Laurent Hofer), `VERSION` (1.0.0), `.nojekyll`, `.gitignore`.
+- **Purge d'historique** : les 7 fichiers de process (`01`–`05`, `audit.md`, `github.md`) retirés du disque, de l'index et de tout l'historique (`filter-branch`, 81 → 80 commits). Sauvegardes hors dépôt : `kanbanjs-process-backup.tar.gz`, `kanbanjs-prepublic.bundle`.
+- **Déploiement** : repo public `damnscientist/KanbanJS`, branche `main`, GitHub Pages actif — https://damnscientist.github.io/KanbanJS/. Auth push en SSH (clé ed25519).
+- **Tests** : 27/27 après renommage. Vérification du site réel : chargement, 6 listes, thème, service worker `active`, zéro erreur console.
+
 ### 2026-07-13 — Ollama, confettis, service worker
 
 - **Support Ollama** : nouveau fournisseur `ollama` dans le `<select>`, endpoint par défaut `http://localhost:11434/v1/chat/completions`. La clé API est optionnelle (masquée dans la modale), le timeout passe à 5 min pour les modèles locaux. Parsing identique à OpenAI (format compatible).
 - **Confettis** : ne se déclenchent plus sur les opérations passives (chargement initial, undo, import, rename). La transition `< 100% → 100%` est désormais détectée via `_prevPct` (comparaison avant/après dans `refreshHeaderInfo`). `_rebuild()` pose `_prevPct = 100` pour que la reconstruction DOM ne soit jamais traitée comme une complétion.
-- **Service worker** : spécifications ajoutées dans `github.md` (étape 2 du déploiement GitHub Pages). ~35 lignes pour le mode hors-ligne après la première visite.
+- **Service worker** : spécifications ajoutées (cache-first, ~35 lignes) pour le mode hors-ligne après la première visite. Implémenté le 2026-09-20 (`sw.js`).
 
 ### 2026-07-01 — Tags, markdown enrichi, templates first, accessibilité, robustesse
 - **Tags** : champ `tags: []` sur les cartes, chips colorés par hash du nom, bouton `+ tag`, input inline (Enter ajoute, Escape annule), suppression par ✕. Raccourci `t`. Tags préservés au copier/coller/dupliquer/paste de liste. Recherchables via `Ctrl+K`. DB: `updateCardTags(id, tags)`.
