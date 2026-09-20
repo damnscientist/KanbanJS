@@ -532,6 +532,69 @@ async function run() {
     assert('Collage notes/tags', false, e.message);
   }
 
+  // ── 27. L'en-tête finit par être rendu ──────────────────────
+  try {
+    await send('rebuild');
+    await new Promise(r => setTimeout(r, 200));
+    const info = frame.contentDocument.getElementById('headerInfo').textContent;
+    assert('En-tête rendu après rebuild', /\d+ listes?/.test(info), info);
+  } catch (e) {
+    assert('En-tête rendu après rebuild', false, e.message);
+  }
+
+  // ── 28. onSave : tous les abonnés notifiés, puis désabonnés ─
+  try {
+    const lists = await send('getLists');
+    const r = await send('onSaveMulti', { listId: lists[0].id });
+    assert('onSave notifie tous les abonnés et se désabonne',
+      r.after === 11 && r.final === 11, 'après=' + r.after + ' final=' + r.final);
+  } catch (e) {
+    assert('onSave multi-abonnés', false, e.message);
+  }
+
+  // ── 29. Fichier modifié pendant la session ──────────────────
+  try {
+    await send('autoSaveMock', { mode: 'granted' });
+    assert('Fichier inchangé → aucune détection',
+      (await send('autoSaveCheckExternal')) === false);
+
+    await send('autoSaveSetFile', { text: '{"board":{}}', modified: Date.now() + 60000 });
+    const detected = await send('autoSaveCheckExternal');
+    const pend = await send('autoSavePending');
+    assert('Fichier externe détecté en session', detected === true && pend === 'reload',
+      'detected=' + detected + ' pending=' + pend);
+    assert('Pas de nouvelle détection tant que la décision est en attente',
+      (await send('autoSaveCheckExternal')) === false);
+
+    await send('autoSaveDismiss');
+    await send('autoSaveMock', { mode: 'prompt' });
+    assert('Pas de détection hors état actif',
+      (await send('autoSaveCheckExternal')) === false);
+
+    await send('autoSaveMock', { mode: 'granted' });
+    await send('autoSaveFlush');
+    const content = await send('autoSaveFile');
+    await send('autoSaveSetFile', { text: content, modified: Date.now() + 60000 });
+    assert('Contenu identique → aucune détection malgré un mtime plus récent',
+      (await send('autoSaveCheckExternal')) === false);
+  } catch (e) {
+    assert('Détection en session', false, e.message);
+  }
+
+  // ── 30. Le message de restauration survit au rendu différé ──
+  try {
+    await send('autoSaveMock', { mode: 'granted' });
+    await send('autoSaveSetFile', { text: await send('export'), modified: Date.now() + 60000 });
+    await send('autoSaveResume');
+    await new Promise(r => setTimeout(r, 150));
+    frame.contentDocument.getElementById('restoreAccept').click();
+    await new Promise(r => setTimeout(r, 250));
+    const msg = frame.contentDocument.getElementById('headerInfo').textContent;
+    assert('Le message de restauration survit au rendu différé', /rechargé|restauré/.test(msg), msg);
+  } catch (e) {
+    assert('Message de restauration', false, e.message);
+  }
+
   // ── Résumé ──────────────────────────────────────────────────
   const total = pass + fail;
   const summary = document.createElement('div');

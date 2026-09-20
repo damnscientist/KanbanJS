@@ -1533,7 +1533,7 @@ const DB = (() => {
   let _saving = true;
   let _prevJson = null;
   let _loadSource = 'default';
-  let _onSave = null;
+  let _onSave = [];
 
   // ── Persistence ───────────────────────────────────────────
   function _isValidState(parsed) {
@@ -1598,7 +1598,7 @@ const DB = (() => {
         try { localStorage.setItem(KEY_BAK, _prevJson); } catch (_) {}
       }
       _prevJson = json;
-      if (_onSave) { try { _onSave(); } catch (_) {} }
+      for (const cb of _onSave) { try { cb(); } catch (_) {} }
       const banner = document.getElementById('quotaWarn');
       if (banner) banner.remove();
     } catch (e) {
@@ -1746,7 +1746,10 @@ const DB = (() => {
     },
 
     // ── Hooks ───────────────────────────────────────────────
-    onSave(cb)   { _onSave = cb; },
+    onSave(cb)   {
+      _onSave.push(cb);
+      return () => { const i = _onSave.indexOf(cb); if (i >= 0) _onSave.splice(i, 1); };
+    },
     loadSource() { return _loadSource; },
 
     // ── Sauvegarde manuelle (repli) ─────────────────────────
@@ -1816,6 +1819,7 @@ const AutoSave = (() => {
   const IDB_KEY   = 'companion';
   const FILE_NAME = 'kanbanjs-board.json';
   const DEBOUNCE  = 800;
+  const POLL_MS   = 60000;
 
   const FILE_TYPES = [{ description: 'Sauvegarde KanbanJS', accept: { 'application/json': ['.json'] } }];
 
@@ -1830,6 +1834,7 @@ const AutoSave = (() => {
   let _onChange = null;
   let _mockStore = null;
   let _mockBad = null;
+  let _pollTimer = null;
 
   // ── IndexedDB ─────────────────────────────────────────────
   const IDB_TIMEOUT = 8000;
@@ -1924,6 +1929,27 @@ const AutoSave = (() => {
     } catch (_) { return false; }
   }
 
+  async function checkExternal() {
+    if (!_handle || _state !== 'active' || _pending || _flushing) return false;
+    if (!(await _externalNewer())) return false;
+    if (_pending || _flushing || _state !== 'active') return false;
+    if (!(await _externalNewer())) return false;
+    try {
+      const file = await _handle.getFile();
+      const text = await file.text();
+      if (text === await DB.exportJSON()) return false;
+    } catch (_) { return false; }
+    _setPending('reload');
+    return true;
+  }
+
+  function _startPolling() {
+    if (_pollTimer) return;
+    _pollTimer = setInterval(() => {
+      if (document.visibilityState !== 'hidden') checkExternal();
+    }, POLL_MS);
+  }
+
   async function _readInto(handle) {
     const h = handle || _handle;
     if (!h) return 0;
@@ -1951,6 +1977,7 @@ const AutoSave = (() => {
   async function init() {
     DB.onSave(() => schedule());
     if (!available()) { _set('unsupported'); return; }
+    _startPolling();
     const gen = ++_gen;
     let rec = null;
     try { rec = await _store.get(IDB_KEY); }
@@ -2084,7 +2111,7 @@ const AutoSave = (() => {
   }
 
   const api = {
-    init, enable, attach, disable, resume, restore, flush, schedule, dismiss, refreshPending, available,
+    init, enable, attach, disable, resume, restore, flush, schedule, dismiss, refreshPending, checkExternal, available,
     capability, isBrave,
     fileName: () => (_handle && _handle.name) || '',
     status: () => _state,
@@ -2468,7 +2495,23 @@ const App = (() => {
     return date != null && dateKey(date) === dateKey(new Date());
   }
 
-  async function refreshHeaderInfo() {
+  let _headerTimer = null;
+  let _headerWaiters = [];
+
+  function refreshHeaderInfo() {
+    clearTimeout(_headerTimer);
+    return new Promise(resolve => {
+      _headerWaiters.push(resolve);
+      _headerTimer = setTimeout(async () => {
+        const waiters = _headerWaiters;
+        _headerWaiters = [];
+        try { await _applyHeaderInfo(); } catch (_) {}
+        for (const r of waiters) r();
+      }, 50);
+    });
+  }
+
+  async function _applyHeaderInfo() {
     const lists = await DB.getLists();
     const allCards = await DB.getAllCards();
     const doneListIds = new Set(lists.filter(l => l.done).map(l => l.id));
@@ -3834,6 +3877,7 @@ const App = (() => {
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') AutoSave.flush();
+    else AutoSave.checkExternal();
   });
 
   // ── BOARD NAME ────────────────────────────────────────────
@@ -5045,6 +5089,19 @@ window.__testAPI = (() => {
         case 'backupInfo':     result = await DB.getBackupInfo(); break;
         case 'setBackupInfo':  await DB.setBackupInfo(args.info); break;
         case 'hasState':       result = await DB.hasState(); break;
+        case 'autoSaveCheckExternal': result = await AutoSave.checkExternal(); break;
+        case 'autoSavePending': result = AutoSave.pending(); break;
+        case 'onSaveMulti': {
+          let n = 0;
+          const offA = DB.onSave(() => { n++; });
+          const offB = DB.onSave(() => { n += 10; });
+          await DB.createCard(args.listId, 'onSave multi');
+          const after = n;
+          offA(); offB();
+          await DB.createCard(args.listId, 'onSave multi 2');
+          result = { after, final: n };
+          break;
+        }
         case 'moveCard':       await DB.moveCard(args.cardId, args.toListId, args.newPos); break;
         case 'updateCardNotes': result = await DB.updateCardNotes(args.id, args.notes); break;
         case 'updateCardTags': result = await DB.updateCardTags(args.id, args.tags); break;

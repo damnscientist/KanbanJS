@@ -88,7 +88,7 @@ Le projet est un fichier unique, sans dépendance ni bundler. Pour lancer les te
 python3 -m http.server 8000
 ```
 
-Puis ouvrez [http://localhost:8000/test.html](http://localhost:8000/test.html) (68 tests DB via iframe + postMessage).
+Puis ouvrez [http://localhost:8000/test.html](http://localhost:8000/test.html) (76 tests DB via iframe + postMessage).
 
 ## À propos du développement
 

@@ -1,4 +1,4 @@
-const CACHE = 'kanbanjs-v5';
+const CACHE = 'kanbanjs-v6';
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.add('./')));

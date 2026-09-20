@@ -1,6 +1,6 @@
 # KanbanJS — Projet anti-procrastination
 
-Fichier unique `index.html` (~5074 lignes) + `sw.js` (service worker, 26 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne. Publié sur GitHub Pages : https://damnscientist.github.io/KanbanJS/
+Fichier unique `index.html` (~5131 lignes) + `sw.js` (service worker, 26 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne. Publié sur GitHub Pages : https://damnscientist.github.io/KanbanJS/
 
 ## Concept
 
@@ -28,7 +28,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Undo/redo 30 niveaux avec streak synchronisé, reconstruction DOM sans `location.reload()`
 - Parsing robuste du JSON IA (équilibrage bracketing, détection guillemets, strip code fences)
 - Gestion d'erreur complète : bannière `QuotaExceededError`, crash recovery dans `init()`, `AbortController` 60s
-- Tests : 68 tests DB via iframe/postMessage (`test.html`)
+- Tests : 76 tests DB via iframe/postMessage (`test.html`)
 
 **UX & design**
 - Raccourcis clavier vim-like complets : navigation h/l/j/k, actions carte/liste, recherche `Ctrl+K`, undo/redo
@@ -50,7 +50,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Pas de **notifications** — le streak est silencieux hors de l'onglet
 
 **Architecture — points d'attention (non bloquants)**
-- `refreshHeaderInfo()` appelé après chaque mutation (création, suppression, move, cut/paste, toggle). Lit `getLists()` + `getAllCards()` + streak à chaque fois. Un debounce de 50ms réduirait le coût sans perte de réactivité
+- `refreshHeaderInfo()` appelé après chaque mutation (création, suppression, move, cut/paste, toggle). ✅ **Corrigé (2026-09-20)** — debounce de 50 ms : `refreshHeaderInfo()` n'est plus qu'un planificateur, le rendu est fait par `_applyHeaderInfo()`
 - `extractCardData()` lit le DOM (`textContent`, `value`) plutôt que la DB — en cas de désynchronisation, le clipboard contient des données périmées
 - `_rebuild()` reconstruit tout le DOM à chaque undo/redo/reset/import. Correct pour la taille actuelle (~50-100 cartes), deviendrait coûteux au-delà
 
@@ -143,6 +143,7 @@ Sauvegarde automatique du board dans un fichier choisi par l'utilisateur, via la
 - **Armement sûr** : `attach()` lit et valide le fichier **avant** de mémoriser le handle. Un fichier choisi par erreur n'est jamais écrasé.
 - **Robustesse des écritures** : compteur de génération `_gen` (une `disable()` pendant une écriture laisse l'état `idle`, jamais `active`) et drapeau `_dirty` (une écriture déclenchée pendant un flush en vol est rejouée, jamais perdue).
 - **Détection externe** : `_externalNewer()` compare `file.lastModified` à `lastWriteAt` avec 1 s de tolérance. Granularité et dérive d'horloge entre machines incluses : détection fiable à la seconde près, pas à la milliseconde.
+- **Détection en session** : `checkExternal()` toutes les 60 s (`POLL_MS`, suspendue quand l'onglet est caché) et au retour de visibilité. Garde-fous : jamais pendant un flush (vérifié **avant et après** la lecture du fichier, car un flush peut démarrer pendant l'`await`), jamais si une décision est déjà en attente, jamais sans handle ni en dehors de l'état `active`. Le bandeau n'est levé qu'après **comparaison du contenu** : un fichier simplement « touché » par un client de synchronisation (mtime plus récent, contenu identique) ne suspend pas les écritures. Remplace l'ancienne limite « seulement au boot ou au clic Réactiver ».
 - **Sonde de capacité** : `capability()` renvoie `ok` | `insecure` | `no-picker` | `no-idb`. Jamais de sniffing d'UA (Brave se présente comme Chrome) : c'est la présence réelle de l'API qui décide. `isBrave()` (drapeau `navigator.brave.isBrave`) ne sert qu'à choisir le message, jamais à décider du support.
 - **Repli export manuel** : quand l'API est absente (`unsupported`) ou non configurée (`idle`), que `DB.hasState()` est vrai et que le dernier export (ou `firstSeen`) date de ≥ 7 jours, une puce `⬇ Sauvegarder` apparaît dans le header et déclenche `exportBoard()`. L'onglet Données affiche « Dernier export… » et « Télécharger une sauvegarde (JSON) ». Rappel **persistant** jusqu'à l'export, sans snooze.
 - **Limites assumées du rappel** : il n'est pas réévalué dans la session où le board passe de « jamais modifié » à « modifié » (fenêtre étroite : `firstSeen` ≥ 7 j **et** absence de clé `state`) ; et `lastExport` est horodaté même si le téléchargement est bloqué par le navigateur — aucune API ne permet de le savoir.
@@ -156,7 +157,7 @@ Sauvegarde automatique du board dans un fichier choisi par l'utilisateur, via la
 |---|---|---|
 | `initTheme` | IIFE, lit/applique/persiste le thème | lecture au load |
 | `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, toggleCollapsed, getCards, getAllCards, createCard, updateCard, updateCardNotes, updateCardTags, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard, reload, onSave, loadSource, hasState, getBackupInfo, setBackupInfo, exportJSON, importJSON, reset, restoreJSON, batch` |
-| `AutoSave` | Fichier compagnon (File System Access API + handle en IndexedDB) | `init, enable, attach, disable, resume, restore, flush, schedule, dismiss, refreshPending, available, capability, isBrave, status, pending, fileName, lastWriteAt, permission, onChange` |
+| `AutoSave` | Fichier compagnon (File System Access API + handle en IndexedDB) | `init, enable, attach, disable, resume, restore, flush, schedule, dismiss, refreshPending, checkExternal, available, capability, isBrave, status, pending, fileName, lastWriteAt, permission, onChange` |
 | `DnD` | Moteur de drag & drop générique | `start(dragEl, id, { ghostEl?, ghostClass?, phClass?, getZone, getAfter, getPos, skip? }, onDrop)` |
 | `App` | UI Kanban | `init()` boot la session |
 
@@ -216,7 +217,7 @@ Sauvegarde automatique du board dans un fichier choisi par l'utilisateur, via la
 - Les cartes ont un champ `notes` (chaîne) persisté via `updateCardNotes`, éditable inline (textarea toggleable)
 - Les cartes ont un champ `tags` (array de strings) persisté via `updateCardTags`, affiché en chips colorés (hash du nom), éditable inline (bouton `+ tag`)
 - Les cartes ont un champ `doneAt` (ISO string ou null) stocké automatiquement quand glissées dans une liste "terminée"
-- `refreshHeaderInfo()` et `refreshCountBadge(id)` sont async, lisent les données via DB (pas le DOM)
+- `refreshHeaderInfo()` est un planificateur debouncé (50 ms) qui **renvoie une promesse résolue après le rendu** (via `_headerWaiters`) ; le rendu lui-même est fait par `_applyHeaderInfo()`, async. `refreshCountBadge(id)` reste async. Les deux lisent les données via DB (pas le DOM)
 
 ### Convention de code
 - `make(tag, className)` pour créer des éléments
@@ -244,11 +245,11 @@ Sauvegarde automatique du board dans un fichier choisi par l'utilisateur, via la
    - **`navigator.storage.persist()`** au premier `updateStreak()` — empêche l'éviction implicite par le navigateur. Ne protège pas du "effacer les données de navigation", d'où le fichier compagnon. ✅ **Implémenté** — `requestPersist()` (flag `_persistAsked`, vérifie `persisted()` avant de demander).
    - **Sync multi-onglets** (absorbé depuis P2) : `window.addEventListener('storage', …)` → debounce → `_rebuild()`. ~15 lignes. Prérequis si le companion voit le jour (la spec `companion.md` prévoit aujourd'hui d'"accepter le race"). ✅ **Implémenté** — `_onStorage()` filtre les clés (`state`, `streak`, `clear`), debounce 200 ms, `DB.reload()` immédiat puis `_rebuild()` différé pendant une édition ; piles undo purgées ; les conflits simultanés restent en dernier écrivain gagne.
    - **Self-heal** : dans `DB._load()`, si le JSON est corrompu, tenter une copie de secours avant de retomber sur `_default` — perdre son board pour un JSON cassé est insupportable. ✅ **Implémenté** — `kanbanjs:state.bak` (état précédent, écrit par `_save()`), restauré et réinjecté dans la clé principale par `_load()`.
-   - **Replis et pièges** — permission à réactiver à chaque session Chromium ✅ **Implémenté** (puce `💾 Réactiver` dans le header, `resume()`, jamais d'`alert()`) ; conflits multi-machines = dernier écrivain gagne ✅ (documenté dans le README, bandeau `reload` au lieu d'un écrasement silencieux) ; repli Safari/Firefox/Brave ✅ **Implémenté (2026-09-20)** — sonde de capacité + message ciblé + export manuel avec rappel persistant à 7 jours. ⏳ **Reste à faire** : détection d'un fichier modifié pendant que l'app est ouverte (aujourd'hui : seulement au boot ou au clic Réactiver).
+   - **Replis et pièges** — permission à réactiver à chaque session Chromium ✅ **Implémenté** (puce `💾 Réactiver` dans le header, `resume()`, jamais d'`alert()`) ; conflits multi-machines = dernier écrivain gagne ✅ (documenté dans le README, bandeau `reload` au lieu d'un écrasement silencieux) ; repli Safari/Firefox/Brave ✅ **Implémenté (2026-09-20)** — sonde de capacité + message ciblé + export manuel avec rappel persistant à 7 jours ; détection d'un fichier modifié pendant que l'app est ouverte ✅ **Implémentée (2026-09-20)** — `AutoSave.checkExternal()` toutes les 60 s (suspendue quand l'onglet est caché) et au retour de visibilité, via `getFile().lastModified > lastWriteAt`. Aucun trigger pendant un flush ni si une décision est déjà en attente.
    - **Ne PAS faire** : WebDAV, GitHub Gist, backend proxy, compte utilisateur — chacun brise la philosophie zéro-compte sans mieux protéger que le fichier chez l'utilisateur.
    - **Estimation** : ~175 lignes au total — ✅ ~25 livrées le 2026-09-20 (persist + storage event + self-heal), ✅ ~230 livrées le 2026-09-20 au titre du fichier compagnon (le budget initial de ~150 était sous-estimé : ni l'UI, ni les permissions, ni les tests n'étaient comptés), ✅ ~120 livrées le 2026-09-20 au titre des replis navigateurs (sonde de capacité, messages ciblés, export manuel + rappel).
 6. **Feedback de progression** — La barre de progression existe mais il n'y a pas de gratification quand on termine une tâche. ✅ **Streak + pulse + compteur du jour** implémentés.
-7. **UX mobile / Companion** — La spec `companion.md` décrit un entonnoir minimal mobile (champ texte → liste Inbox). Le fichier `companion.html` (~200 lignes) reste à implémenter. La capture se fait sur mobile, l'exécution sur desktop.
+7. **UX mobile / Companion** — ❌ **Abandonné (2026-09-20)**. La spec `companion.md` décrit un entonnoir minimal mobile (champ texte → liste Inbox), mais la décision est prise : le mobile n'est pas le lieu de l'exécution, KanbanJS reste une expérience desktop, et le besoin de capture rapide depuis le téléphone ne s'est pas fait sentir. `companion.md` est conservé comme trace de la réflexion, mais `companion.html` ne sera pas implémenté. Aucun autre chantier n'en dépend.
 
 ### P2 — Nice to have
 
@@ -264,6 +265,20 @@ Sauvegarde automatique du board dans un fichier choisi par l'utilisateur, via la
 17. **Fournisseur LM Studio** — Ajouter `lmstudio` au switch `queryAI`, sur le modèle de `ollama` : serveur local compatible OpenAI (`http://localhost:1234/v1/chat/completions` par défaut), clé API optionnelle (LM Studio n'en exige pas), timeout long (~5 min) car les modèles locaux sont lents. Parsing identique à OpenAI. Complète l'offre « IA locale sans compte » à côté d'Ollama — utile pour les utilisateurs qui préfèrent l'interface graphique de LM Studio pour gérer/télécharger leurs modèles.
 
 ## Changelog
+
+### 2026-09-20 — Détection en session et dette technique (v1.1.2)
+
+- **Détection d'un fichier modifié pendant la session** : nouvelle méthode `AutoSave.checkExternal()`, appelée toutes les 60 s (`POLL_MS`, suspendue quand l'onglet est caché) et au retour de visibilité. Elle compare `getFile().lastModified` à `lastWriteAt` et, si le fichier est plus récent, affiche le bandeau « Recharger ? » — les écritures étant alors suspendues, la version externe n'est jamais écrasée. Lève l'ancienne limite « détection seulement au boot ou au clic Réactiver ».
+- **Debounce de `refreshHeaderInfo()`** : la fonction n'est plus qu'un planificateur (50 ms), le rendu est fait par `_applyHeaderInfo()`. Les 16 points d'appel après mutation ne déclenchent plus autant de lectures de `getLists()` + `getAllCards()` + streak. Point d'attention signalé dans la roadmap depuis les débuts du projet. Limite assumée : un aller-retour `100 % → < 100 % → 100 %` en moins de 50 ms (auto-répétition clavier) peut faire manquer les confettis.
+- **`DB.onSave` multi-abonnés** : le callback unique (`_onSave = cb`) devient un tableau, et `onSave(cb)` **renvoie une fonction de désabonnement**. Jusqu'ici un second abonné écrasait silencieusement le premier — le jour où un module autre qu'`AutoSave` s'abonnait, la sauvegarde automatique cessait de fonctionner sans le moindre signe.
+- **Abandon de `companion.html`** (roadmap #7) : décision actée — le mobile n'est pas le lieu de l'exécution, KanbanJS reste une expérience desktop, et le besoin de capture rapide depuis le téléphone ne s'est pas fait sentir. `companion.md` est conservé comme trace de la réflexion.
+- **Correctifs issus d'une relecture en contexte neuf (même jour)** :
+  - **Régression visible** : `refreshHeaderInfo()` n'étant plus `async`, les `await` des appelants ne garantissaient plus le rendu. Conséquence mesurée : après une restauration, le message « Board restauré. » était effacé ~50 ms plus tard par le rendu différé de `_rebuild()`. La fonction renvoie désormais **une promesse résolue après le rendu** (file `_headerWaiters`), ce qui restaure le contrat des 16 appelants sans supprimer la coalescence.
+  - **Course `checkExternal()` / `flush()`** : la garde `_flushing` n'était lue qu'à l'entrée, avant deux `await`. Un flush démarré pendant la lecture du fichier pouvait écraser la version externe *puis* voir le bandeau « a été modifié ailleurs » s'afficher à tort. Les gardes sont maintenant revérifiées après l'`await` et la comparaison refaite sur `_lastWriteAt` à jour.
+  - **Faux positif bloquant** : la détection était purement temporelle. Un client de synchronisation qui « touche » le fichier sans en changer le contenu posait le bandeau et **suspendait toutes les écritures** jusqu'à décision. Le contenu est désormais comparé (`file.text()` vs `DB.exportJSON()`) avant de lever le bandeau.
+  - **`setInterval` de polling** déplacé après la sonde `available()` : il ne tourne plus inutilement sur Safari/Firefox, où il ne pouvait rien faire.
+- **Tests** : 68 → 76 assertions (en-tête rendu, notification **et désabonnement** des abonnés `onSave`, 4 cas de détection en session dont le fichier inchangé et le contenu identique à mtime plus récent, message de restauration survivant au rendu différé). Validation par **mutation inverse** : sur le code non corrigé, la suite échoue exactement aux assertions concernées (`compteur = 10`, `detected=false`, et le message remplacé par « 7 listes · 0/15 cartes »).
+- **Service worker** : cache `kanbanjs-v5` → `v6`. `VERSION` 1.1.2.
 
 ### 2026-09-20 — Repli pour les navigateurs sans File System Access API (v1.1.1)
 
