@@ -45,7 +45,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - **Clé API en clair** dans `localStorage` — lisible par toute extension ou script cross-origin. Volontairement **exclue** du fichier compagnon
 
 **Fonctionnel**
-- Pas de **companion mobile** implémenté — `companion.md` est une spec, pas du code. La capture rapide sur mobile n'existe pas
+- Pas de **capture mobile** — `companion.md` reste une spec non implémentée. Décision assumée (roadmap #7, **abandonné**) : KanbanJS est un outil desktop, la capture rapide depuis le téléphone n'a pas été un besoin ressenti
 - Pas de **dates d'échéance** sur les cartes — utile pour les freelances avec deadlines
 - Pas de **notifications** — le streak est silencieux hors de l'onglet
 
@@ -181,7 +181,7 @@ Sauvegarde automatique du board dans un fichier choisi par l'utilisateur, via la
 
 ### Limites techniques
 - **Ouverture en `file://`** : l'API IA est bloquée par CORS. L'app fonctionne en `file://` pour le board, les templates et la persistance, mais les appels IA nécessitent d'être servi en `http(s)` — d'où la publication GitHub Pages.
-- **Service worker (`sw.js`)** : cache-first, chemins relatifs (`'./'`), guard non-GET (les POST IA ne doivent pas passer par la Cache API). Enregistré dans `index.html` uniquement en `https:`. **Toute modification publiée d'`index.html` ou `sw.js` doit bumper le nom de cache (`kanbanjs-v1` → `v2` → `v3` → `v4` → `v5`)**, sinon les visiteurs gardent l'ancienne version.
+- **Service worker (`sw.js`)** : cache-first, chemins relatifs (`'./'`), guard non-GET (les POST IA ne doivent pas passer par la Cache API). Enregistré dans `index.html` uniquement en `https:`. **Toute modification publiée d'`index.html` ou `sw.js` doit bumper le nom de cache (`kanbanjs-v1` → `v2` → `v3` → `v4` → `v5` → `v6`)**, sinon les visiteurs gardent l'ancienne version.
 - **Fournisseur IA centralisé** : tout le branchement fournisseur est dans `queryAI` (switch provider → body/headers/parsing)
 
 ### Déploiement
@@ -226,6 +226,19 @@ Sauvegarde automatique du board dans un fichier choisi par l'utilisateur, via la
 - Tableaux de bord en `const`, fonctions helpers en closures
 - Pas de commentaires dans le code (sauf en-têtes de sections)
 - Noms en français (utilisateur francophone)
+
+### Points ouverts connus (assumés, non planifiés)
+
+Issus des relectures successives. Aucun n'est bloquant ; aucun n'est dans la roadmap.
+
+- **Copie d'une carte vers une liste « terminée »** : le Ctrl+drag pose la classe visuelle « faite » mais **pas** `doneAt`, contrairement au drag normal — donc pas de date de complétion ni de streak. Correctif ≈ 5 lignes dans la branche `copy` de `buildCard`, via `DB.setCardDoneAt`.
+- **Rappel d'export non réévalué en session** : `refreshAutoSaveUI()` n'est appelé qu'au boot, sur `AutoSave.onChange`, après un export et à l'ouverture de l'onglet Données. Un board qui passe de « jamais modifié » à « modifié » dans la même session n'affiche la puce `⬇ Sauvegarder` qu'au rechargement suivant. Fenêtre étroite (`firstSeen` ≥ 7 j **et** absence de clé `state`).
+- **`lastExport` horodaté sans confirmation** : si le navigateur bloque le téléchargement, le rappel est tu pour 7 jours. Aucune API ne permet de savoir qu'un téléchargement a abouti.
+- **Changement distant pendant un glisser-déposer** : `_syncFromStorage()` diffère le `_rebuild()` pendant une édition, mais ne détecte pas un drag en cours. Un changement distant pile à ce moment peut détacher l'élément saisi. Fenêtre très étroite (200 ms de debounce).
+- **Confettis** : un aller-retour `100 % → < 100 % → 100 %` en moins de 50 ms (auto-répétition clavier) est manqué par le debounce de `refreshHeaderInfo()`.
+- **`localStorage` hors du module `DB`** : `streak`, `config` et les 3 clés de thème sont lus/écrits directement depuis `App` et `initTheme`. Assumé, mais la frontière « tout passe par `DB` » n'est pas tenue.
+
+Voir aussi la section **Faiblesses** pour `extractCardData()` (lit le DOM) et le coût de `_rebuild()`.
 
 ## Roadmap
 
