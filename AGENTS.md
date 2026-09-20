@@ -1,6 +1,6 @@
 # KanbanJS — Projet anti-procrastination
 
-Fichier unique `index.html` (~4845 lignes) + `sw.js` (service worker, 26 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne. Publié sur GitHub Pages : https://damnscientist.github.io/KanbanJS/
+Fichier unique `index.html` (~5074 lignes) + `sw.js` (service worker, 26 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne. Publié sur GitHub Pages : https://damnscientist.github.io/KanbanJS/
 
 ## Concept
 
@@ -28,7 +28,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Undo/redo 30 niveaux avec streak synchronisé, reconstruction DOM sans `location.reload()`
 - Parsing robuste du JSON IA (équilibrage bracketing, détection guillemets, strip code fences)
 - Gestion d'erreur complète : bannière `QuotaExceededError`, crash recovery dans `init()`, `AbortController` 60s
-- Tests : 50 tests DB via iframe/postMessage (`test.html`)
+- Tests : 68 tests DB via iframe/postMessage (`test.html`)
 
 **UX & design**
 - Raccourcis clavier vim-like complets : navigation h/l/j/k, actions carte/liste, recherche `Ctrl+K`, undo/redo
@@ -40,7 +40,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 ### Faiblesses
 
 **Persistance & sécurité**
-- **localStorage = perte totale au `clear` navigateur** ou changement de machine. Atténué par la copie de secours (`kanbanjs:state.bak`), le self-heal, le stockage persistant et surtout le **fichier compagnon** (sauvegarde automatique dans un fichier choisi par l'utilisateur, Chrome/Edge/Opera). Reste non couvert : Safari/Firefox (repli export manuel à faire, P3)
+- **localStorage = perte totale au `clear` navigateur** ou changement de machine. Atténué par la copie de secours (`kanbanjs:state.bak`), le self-heal, le stockage persistant, le **fichier compagnon** (Chrome/Edge/Opera) et le **repli export manuel + rappel** pour les autres navigateurs. **Safari et Firefox n'implémentent pas la File System Access API ; Brave la désactive par défaut** (activable dans `brave://flags`)
 - **Sync multi-onglets partielle** — les changements distants sont répercutés (`storage` event → debounce → reload/rebuild), mais les conflits d'écriture simultanée restent en « dernier écrivain gagne »
 - **Clé API en clair** dans `localStorage` — lisible par toute extension ou script cross-origin. Volontairement **exclue** du fichier compagnon
 
@@ -115,9 +115,10 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - **Templates** : 12 templates de corvées universelles intégrés, matching fuzzy sur le texte saisi dans le textarea (💡 "Template suggéré"). Zéro API requise.
 
 ### Persistance
-- `localStorage` avec 7 clés :
+- `localStorage` avec 8 clés :
   - `kanbanjs:state` → board, listes, cartes (reset nettoie uniquement celle-ci)
   - `kanbanjs:state.bak` → copie de secours (état précédent), utilisée par le self-heal de `DB._load()`
+  - `kanbanjs:backup` → `{ firstSeen, lastExport }` pour le repli export manuel
   - `kanbanjs:config` → provider, endpoint, apiKey, model
   - `kanbanjs:streak` → `{ streak, lastDate, todayCount, todayDate }` (export/import inclus)
   - Thème (3 clés) :
@@ -142,6 +143,9 @@ Sauvegarde automatique du board dans un fichier choisi par l'utilisateur, via la
 - **Armement sûr** : `attach()` lit et valide le fichier **avant** de mémoriser le handle. Un fichier choisi par erreur n'est jamais écrasé.
 - **Robustesse des écritures** : compteur de génération `_gen` (une `disable()` pendant une écriture laisse l'état `idle`, jamais `active`) et drapeau `_dirty` (une écriture déclenchée pendant un flush en vol est rejouée, jamais perdue).
 - **Détection externe** : `_externalNewer()` compare `file.lastModified` à `lastWriteAt` avec 1 s de tolérance. Granularité et dérive d'horloge entre machines incluses : détection fiable à la seconde près, pas à la milliseconde.
+- **Sonde de capacité** : `capability()` renvoie `ok` | `insecure` | `no-picker` | `no-idb`. Jamais de sniffing d'UA (Brave se présente comme Chrome) : c'est la présence réelle de l'API qui décide. `isBrave()` (drapeau `navigator.brave.isBrave`) ne sert qu'à choisir le message, jamais à décider du support.
+- **Repli export manuel** : quand l'API est absente (`unsupported`) ou non configurée (`idle`), que `DB.hasState()` est vrai et que le dernier export (ou `firstSeen`) date de ≥ 7 jours, une puce `⬇ Sauvegarder` apparaît dans le header et déclenche `exportBoard()`. L'onglet Données affiche « Dernier export… » et « Télécharger une sauvegarde (JSON) ». Rappel **persistant** jusqu'à l'export, sans snooze.
+- **Limites assumées du rappel** : il n'est pas réévalué dans la session où le board passe de « jamais modifié » à « modifié » (fenêtre étroite : `firstSeen` ≥ 7 j **et** absence de clé `state`) ; et `lastExport` est horodaté même si le téléchargement est bloqué par le navigateur — aucune API ne permet de le savoir.
 - **Pièges** : écriture non atomique (`createWritable` tronque avant d'écrire) ; IndexedDB protégée par un timeout de 8 s pour ne jamais bloquer l'app ; `AutoSave.init()` n'est pas attendu par `App.init()`.
 
 ## Architecture
@@ -151,8 +155,8 @@ Sauvegarde automatique du board dans un fichier choisi par l'utilisateur, via la
 | Module | Responsabilité | API publique |
 |---|---|---|
 | `initTheme` | IIFE, lit/applique/persiste le thème | lecture au load |
-| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, toggleCollapsed, getCards, getAllCards, createCard, updateCard, updateCardNotes, updateCardTags, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard, reload, onSave, loadSource, exportJSON, importJSON, reset, restoreJSON, batch` |
-| `AutoSave` | Fichier compagnon (File System Access API + handle en IndexedDB) | `init, enable, attach, disable, resume, restore, flush, schedule, dismiss, available, status, pending, fileName, lastWriteAt, onChange` |
+| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, toggleCollapsed, getCards, getAllCards, createCard, updateCard, updateCardNotes, updateCardTags, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard, reload, onSave, loadSource, hasState, getBackupInfo, setBackupInfo, exportJSON, importJSON, reset, restoreJSON, batch` |
+| `AutoSave` | Fichier compagnon (File System Access API + handle en IndexedDB) | `init, enable, attach, disable, resume, restore, flush, schedule, dismiss, refreshPending, available, capability, isBrave, status, pending, fileName, lastWriteAt, permission, onChange` |
 | `DnD` | Moteur de drag & drop générique | `start(dragEl, id, { ghostEl?, ghostClass?, phClass?, getZone, getAfter, getPos, skip? }, onDrop)` |
 | `App` | UI Kanban | `init()` boot la session |
 
@@ -165,6 +169,7 @@ Sauvegarde automatique du board dans un fichier choisi par l'utilisateur, via la
 - Cache des `getBoundingClientRect()` construit au démarrage du drag, évite les reflows à chaque `pointermove`
 - `cleanup()` après `dropCb()` (capture locale de la callback)
 - Handler `pointercancel` + `cleanup()` défensif (libération capture persistante)
+- `restoreOrigin()` : un drop hors de toute zone (ou une annulation) remet l'élément à sa position d'origine via `_origParent`/`_origAfter` — au lieu de le laisser à l'emplacement du placeholder, ce qui affichait un déplacement jamais écrit en base. En mode copie (Ctrl), l'original ne bouge jamais.
 
 ### Design
 - Dark/light mode via `data-theme` sur `<html>` + CSS custom properties
@@ -175,7 +180,7 @@ Sauvegarde automatique du board dans un fichier choisi par l'utilisateur, via la
 
 ### Limites techniques
 - **Ouverture en `file://`** : l'API IA est bloquée par CORS. L'app fonctionne en `file://` pour le board, les templates et la persistance, mais les appels IA nécessitent d'être servi en `http(s)` — d'où la publication GitHub Pages.
-- **Service worker (`sw.js`)** : cache-first, chemins relatifs (`'./'`), guard non-GET (les POST IA ne doivent pas passer par la Cache API). Enregistré dans `index.html` uniquement en `https:`. **Toute modification publiée d'`index.html` ou `sw.js` doit bumper le nom de cache (`kanbanjs-v1` → `v2` → `v3` → `v4`)**, sinon les visiteurs gardent l'ancienne version.
+- **Service worker (`sw.js`)** : cache-first, chemins relatifs (`'./'`), guard non-GET (les POST IA ne doivent pas passer par la Cache API). Enregistré dans `index.html` uniquement en `https:`. **Toute modification publiée d'`index.html` ou `sw.js` doit bumper le nom de cache (`kanbanjs-v1` → `v2` → `v3` → `v4` → `v5`)**, sinon les visiteurs gardent l'ancienne version.
 - **Fournisseur IA centralisé** : tout le branchement fournisseur est dans `queryAI` (switch provider → body/headers/parsing)
 
 ### Déploiement
@@ -239,9 +244,9 @@ Sauvegarde automatique du board dans un fichier choisi par l'utilisateur, via la
    - **`navigator.storage.persist()`** au premier `updateStreak()` — empêche l'éviction implicite par le navigateur. Ne protège pas du "effacer les données de navigation", d'où le fichier compagnon. ✅ **Implémenté** — `requestPersist()` (flag `_persistAsked`, vérifie `persisted()` avant de demander).
    - **Sync multi-onglets** (absorbé depuis P2) : `window.addEventListener('storage', …)` → debounce → `_rebuild()`. ~15 lignes. Prérequis si le companion voit le jour (la spec `companion.md` prévoit aujourd'hui d'"accepter le race"). ✅ **Implémenté** — `_onStorage()` filtre les clés (`state`, `streak`, `clear`), debounce 200 ms, `DB.reload()` immédiat puis `_rebuild()` différé pendant une édition ; piles undo purgées ; les conflits simultanés restent en dernier écrivain gagne.
    - **Self-heal** : dans `DB._load()`, si le JSON est corrompu, tenter une copie de secours avant de retomber sur `_default` — perdre son board pour un JSON cassé est insupportable. ✅ **Implémenté** — `kanbanjs:state.bak` (état précédent, écrit par `_save()`), restauré et réinjecté dans la clé principale par `_load()`.
-   - **Replis et pièges** — permission à réactiver à chaque session Chromium ✅ **Implémenté** (puce `💾 Réactiver` dans le header, `resume()`, jamais d'`alert()`) ; conflits multi-machines = dernier écrivain gagne ✅ (documenté dans le README, désormais avec bandeau `reload` au lieu d'un écrasement silencieux) ; ⏳ **Reste à faire** : repli Safari/Firefox (feature detection + rappel « Dernier export : il y a N jours ») et détection d'un fichier modifié pendant que l'app est ouverte (aujourd'hui : seulement au boot ou au clic Réactiver).
+   - **Replis et pièges** — permission à réactiver à chaque session Chromium ✅ **Implémenté** (puce `💾 Réactiver` dans le header, `resume()`, jamais d'`alert()`) ; conflits multi-machines = dernier écrivain gagne ✅ (documenté dans le README, bandeau `reload` au lieu d'un écrasement silencieux) ; repli Safari/Firefox/Brave ✅ **Implémenté (2026-09-20)** — sonde de capacité + message ciblé + export manuel avec rappel persistant à 7 jours. ⏳ **Reste à faire** : détection d'un fichier modifié pendant que l'app est ouverte (aujourd'hui : seulement au boot ou au clic Réactiver).
    - **Ne PAS faire** : WebDAV, GitHub Gist, backend proxy, compte utilisateur — chacun brise la philosophie zéro-compte sans mieux protéger que le fichier chez l'utilisateur.
-   - **Estimation** : ~175 lignes au total — ✅ ~25 livrées le 2026-09-20 (persist + storage event + self-heal), ✅ ~230 livrées le 2026-09-20 au titre du fichier compagnon (le budget initial de ~150 était sous-estimé : ni l'UI, ni les permissions, ni les tests n'étaient comptés). ⏳ Reste ~25 lignes (repli Safari/Firefox + rappel d'export).
+   - **Estimation** : ~175 lignes au total — ✅ ~25 livrées le 2026-09-20 (persist + storage event + self-heal), ✅ ~230 livrées le 2026-09-20 au titre du fichier compagnon (le budget initial de ~150 était sous-estimé : ni l'UI, ni les permissions, ni les tests n'étaient comptés), ✅ ~120 livrées le 2026-09-20 au titre des replis navigateurs (sonde de capacité, messages ciblés, export manuel + rappel).
 6. **Feedback de progression** — La barre de progression existe mais il n'y a pas de gratification quand on termine une tâche. ✅ **Streak + pulse + compteur du jour** implémentés.
 7. **UX mobile / Companion** — La spec `companion.md` décrit un entonnoir minimal mobile (champ texte → liste Inbox). Le fichier `companion.html` (~200 lignes) reste à implémenter. La capture se fait sur mobile, l'exécution sur desktop.
 
@@ -259,6 +264,29 @@ Sauvegarde automatique du board dans un fichier choisi par l'utilisateur, via la
 17. **Fournisseur LM Studio** — Ajouter `lmstudio` au switch `queryAI`, sur le modèle de `ollama` : serveur local compatible OpenAI (`http://localhost:1234/v1/chat/completions` par défaut), clé API optionnelle (LM Studio n'en exige pas), timeout long (~5 min) car les modèles locaux sont lents. Parsing identique à OpenAI. Complète l'offre « IA locale sans compte » à côté d'Ollama — utile pour les utilisateurs qui préfèrent l'interface graphique de LM Studio pour gérer/télécharger leurs modèles.
 
 ## Changelog
+
+### 2026-09-20 — Repli pour les navigateurs sans File System Access API (v1.1.1)
+
+- **Sonde de capacité** : `AutoSave.capability()` remplace le booléen `available()` et renvoie `ok` | `insecure` | `no-picker` | `no-idb`. Toujours de la détection de capacité, **jamais de sniffing d'UA** — décisif ici, car **Brave se présente comme Chrome** : un test d'UA aurait annoncé « supporté » puis planté à l'appel réel. `available()` est conservé (`capability() === 'ok'`).
+- **Messages ciblés** : fini « Indisponible sur ce navigateur ». Un message par cause. Sur Brave (drapeau `navigator.brave.isBrave`, utilisé **uniquement** pour le texte du message), il indique d'activer « File System Access API » dans `brave://flags`. `autosaveUnsupportedMessage(cap, brave)` est une fonction pure, testée.
+- **Repli export manuel** : quand l'API est absente (`unsupported`) ou non configurée (`idle`), que le board a déjà été modifié (`DB.hasState()`) et que le dernier export — ou `firstSeen` — date de ≥ 7 jours, une puce `⬇ Sauvegarder` apparaît dans le header. Elle déclenche `exportBoard()` (le téléchargement extrait du handler `#exportBtn`) et disparaît une fois l'export fait. Rappel **persistant**, sans snooze.
+- **Onglet Données** : ligne « Dernier export : il y a N jours » + bouton « Télécharger une sauvegarde (JSON) », quel que soit le navigateur.
+- **`DB`** : `hasState()` (« `kanbanjs:state` a déjà été écrit »), `getBackupInfo()`, `setBackupInfo()`. Nouvelle clé `kanbanjs:backup` (`{ firstSeen, lastExport }`).
+- **Pourquoi ça compte** : Safari et Firefox n'implémentent pas la File System Access API, et Brave la désactive par défaut. Ces utilisateurs n'avaient jusqu'ici aucun filet.
+- **Tests** : 50 → 68 assertions (sonde de capacité ; 4 cas de déclenchement du rappel — seuil, export récent, installation récente, veille du seuil ; 3 messages ciblés ; persistance des infos de sauvegarde ; ordre des cartes après rebuild et après reload ; copie de secours réparée ; import invalide rejeté sans effet ; reset purgeant le rappel ; collage préservant notes et tags). Vérifications hors suite : chemin non supporté rejoué en masquant `showSaveFilePicker` **avant** le boot (message Brave rendu, boutons désactivés), rappel d'export 7/7 dans un vrai DOM, **suite complète sur un `index.html` où l'API est masquée** (preuve que la sonde ne dépend pas du navigateur), et **drag lâché hors zone** (le correctif C6 ci-dessous, non testable dans l'iframe masquée du harnais car il exige une mise en page réelle). Chaque correctif a été validé par **mutation inverse** : la suite échoue sur le code non corrigé, aux assertions concernées.
+- **Correctifs hors périmètre du diff, trouvés par la même relecture** :
+  - **Drag lâché hors de toute zone (C6)** : le DOM était réordonné — la carte était posée à l'emplacement du placeholder — sans aucune écriture en base, et l'ordre se « corrigeait » silencieusement au rechargement suivant. `_origParent`/`_origAfter` étaient capturés au départ du drag mais jamais utilisés ; ils le sont désormais via `restoreOrigin()`. En mode copie (Ctrl), un drop invalide ne déplace plus l'original (il était repositionné par `ph.replaceWith(ghostEl)` alors que, en copie, l'original n'a jamais quitté le DOM).
+  - **Coller ou Ctrl+drag d'une carte (C7)** : la carte affichée était construite à partir de l'objet d'**avant** `updateCardNotes`/`updateCardTags` — donc sans pastille de notes ni chips de tags. Plus grave, la première interaction ensuite réécrivait la base depuis ce DOM périmé : `+ tag` remplaçait tous les tags par le seul nouveau, et ouvrir puis refermer l'éditeur de notes écrivait `""`. La carte rendue est maintenant le clone à jour.
+- **Correctifs issus d'une relecture en contexte neuf (module `DB` + diff v1.1.1)** :
+  - **Ordre des cartes perdu au rechargement — majeur, pré-existant** : `_rebuild()` rendait les cartes dans l'ordre du tableau `_state.cards`, pas trié par `position`, alors que `moveCard()` ne réordonne pas ce tableau (il ne réécrit que les `position`) et que `getCards()` trie correctement. Conséquence : après un glisser-déposer dans une même liste, l'ordre manuel revenait à l'ordre de création à chaque chargement de page, undo/redo, import, reset ou sync. Seul `_rebuild` était fautif — les trois autres appelants de `buildList()` passent par `DB.getCards()`.
+  - **`_isValidState()` durci** : les éléments `null` ou non-objet de `lists`/`cards` sont désormais rejetés. Un import malformé (ex. `lists:[null]`) était persisté **avant** le rendu, puis faisait planter `_rebuild()` au boot suivant (écran de crash recovery, board inaccessible). Il est maintenant refusé avant toute écriture, et `_load()` bascule sur la copie de secours au lieu de planter.
+  - **Self-heal complet** : quand la clé principale **et** la copie étaient illisibles, la copie restait cassée — le self-heal restait indisponible jusqu'à la première mutation réelle. Les deux clés sont maintenant réparées dans le même passage.
+  - **`getBackupInfo()`** : une valeur non-objet (`"[]"`, `42`, `true`) renvoyait une primitive, et l'init de `firstSeen` écrivait alors dans le vide (rappel muet). Validation de forme ajoutée.
+  - **`backupInfoText()`** : plus de « NaN jours » sur une date invalide.
+  - **`reset()`** purge aussi `kanbanjs:backup` — le rappel ne réapparaît plus juste après une remise à zéro.
+  - **`onChange`** : `refreshAutoSaveUI()` étant devenue asynchrone, l'abonnement est enveloppé d'un `.catch()` (pas de rejet non géré).
+  - **Test de sonde corrigé** : l'assertion `cap === 'ok'` faisait échouer la suite sur Brave, Firefox et Safari — précisément les navigateurs que ce repli cible. Elle vérifie maintenant l'appartenance à l'ensemble des valeurs connues.
+- **Service worker** : cache `kanbanjs-v4` → `v5`. `VERSION` 1.1.1.
 
 ### 2026-09-20 — Fichier compagnon (v1.1.0)
 

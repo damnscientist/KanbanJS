@@ -20,7 +20,7 @@ Face à une corvée qui paraît insurmontable (« ranger mon bureau », « faire
 - **Raccourcis vim-like** : pilotage complet au clavier.
 - **Export / import JSON** : vos données restent à vous, sauvegardables en un fichier.
 - **Persistance robuste** : copie de secours automatique (le board se répare seul si la sauvegarde principale est corrompue), synchronisation entre les onglets ouverts, et stockage persistant demandé au navigateur.
-- **Sauvegarde automatique dans un fichier** (Chrome, Edge, Opera) : l'app écrit votre board dans un fichier que vous choisissez, à chaque modification. Rangez-le dans un dossier Drive / Dropbox / Syncthing pour synchroniser plusieurs machines sans compte. Si les données locales disparaissent, une bannière propose de restaurer en un clic.
+- **Sauvegarde automatique dans un fichier** (Chrome, Edge, Opera) : l'app écrit votre board dans un fichier que vous choisissez, à chaque modification. Rangez-le dans un dossier Drive / Dropbox / Syncthing pour synchroniser plusieurs machines sans compte. Si les données locales disparaissent, une bannière propose de restaurer en un clic. Sur les autres navigateurs, un export manuel avec rappel prend le relais.
 - **Fonctionne hors-ligne** après la première visite (service worker).
 
 ## Quick start
@@ -51,7 +51,7 @@ La clé API est stockée en clair dans le `localStorage` de votre navigateur —
 - **Permission** : Chrome, Edge et Opera redemandent l'autorisation à chaque session. La puce `💾 Réactiver` dans l'en-tête la rétablit en un clic.
 - **Données perdues** : si le navigateur a effacé son stockage, une bannière propose de restaurer le board depuis le fichier en un clic.
 - **Conflits** : si deux machines modifient le board en même temps, le dernier écrivain gagne. Un fichier modifié ailleurs n'est détecté qu'à ~1 seconde près (granularité du disque et horloges des machines).
-- **Safari et Firefox** : non pris en charge pour l'instant. Utilisez l'export JSON (`↓`) pour sauvegarder à la main.
+- **Safari, Firefox et Brave** : l'enregistrement dans un fichier n'y est pas disponible par défaut. Sur Brave, il s'active dans `brave://flags` → « File System Access API » (redémarrage requis). Partout ailleurs, utilisez « Télécharger une sauvegarde (JSON) » dans l'onglet Données : après 7 jours sans export, une puce `⬇ Sauvegarder` vous le rappelle dans l'en-tête.
 
 ## Raccourcis clavier
 
@@ -88,7 +88,7 @@ Le projet est un fichier unique, sans dépendance ni bundler. Pour lancer les te
 python3 -m http.server 8000
 ```
 
-Puis ouvrez [http://localhost:8000/test.html](http://localhost:8000/test.html) (50 tests DB via iframe + postMessage).
+Puis ouvrez [http://localhost:8000/test.html](http://localhost:8000/test.html) (68 tests DB via iframe + postMessage).
 
 ## À propos du développement
 

@@ -1356,6 +1356,13 @@
             <button class="btn btn-ghost" id="autosaveAttach">Ouvrir un fichier existant…</button>
             <button class="btn btn-ghost" id="autosaveDisable">Désactiver</button>
           </div>
+          <div class="field">
+            <span class="field-label">Sauvegarde manuelle</span>
+            <span class="field-help" id="autosaveBackupInfo"></span>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-ghost" id="autosaveExport">Télécharger une sauvegarde (JSON)</button>
+          </div>
           <span class="cfg-status" id="autosaveMsg"></span>
         </div>
       </div>
@@ -1490,6 +1497,7 @@
 const DB = (() => {
   const KEY = 'kanbanjs:state';
   const KEY_BAK = 'kanbanjs:state.bak';
+  const BACKUP_KEY = 'kanbanjs:backup';
   const uid = () => '_' + Math.random().toString(36).slice(2, 10);
 
   const _tutoId    = uid();
@@ -1529,7 +1537,10 @@ const DB = (() => {
 
   // ── Persistence ───────────────────────────────────────────
   function _isValidState(parsed) {
-    return !!parsed && !!parsed.board && Array.isArray(parsed.lists) && Array.isArray(parsed.cards);
+    return !!parsed && !!parsed.board
+      && Array.isArray(parsed.lists) && Array.isArray(parsed.cards)
+      && parsed.lists.every(l => l && typeof l.id === 'string' && typeof l.title === 'string')
+      && parsed.cards.every(c => c && typeof c.id === 'string' && typeof c.listId === 'string');
   }
 
   function _load() {
@@ -1568,7 +1579,11 @@ const DB = (() => {
     const fresh = JSON.parse(JSON.stringify(_default));
     _loadSource = 'default';
     if (raw !== null) {
-      try { localStorage.setItem(KEY, JSON.stringify(fresh)); } catch (_) {}
+      try {
+        const json = JSON.stringify(fresh);
+        localStorage.setItem(KEY, json);
+        localStorage.setItem(KEY_BAK, json);
+      } catch (_) {}
       console.warn('KanbanJS : sauvegarde principale et copie de secours illisibles, board réinitialisé.');
     }
     return fresh;
@@ -1734,6 +1749,19 @@ const DB = (() => {
     onSave(cb)   { _onSave = cb; },
     loadSource() { return _loadSource; },
 
+    // ── Sauvegarde manuelle (repli) ─────────────────────────
+    async hasState() { try { return localStorage.getItem(KEY) !== null; } catch (_) { return false; } },
+    async getBackupInfo() {
+      const empty = { firstSeen: null, lastExport: null };
+      try {
+        const v = JSON.parse(localStorage.getItem(BACKUP_KEY));
+        return (v && typeof v === 'object' && !Array.isArray(v)) ? v : empty;
+      } catch (_) { return empty; }
+    },
+    async setBackupInfo(info) {
+      try { localStorage.setItem(BACKUP_KEY, JSON.stringify(info)); } catch (_) {}
+    },
+
     // ── Export / Import / Reset ──────────────────────────────
     async exportJSON() {
       let streak = null;
@@ -1762,6 +1790,7 @@ const DB = (() => {
       _state = JSON.parse(JSON.stringify(_default));
       _save();
       try { localStorage.removeItem(KEY_BAK); } catch (_) {}
+      try { localStorage.removeItem(BACKUP_KEY); } catch (_) {}
     },
     async restoreJSON(json) {
       let parsed;
@@ -1906,8 +1935,17 @@ const AutoSave = (() => {
   }
 
   // ── Cycle de vie ──────────────────────────────────────────
-  function available() {
-    return typeof window.showSaveFilePicker === 'function' && !!window.indexedDB;
+  function capability() {
+    if (!window.isSecureContext) return 'insecure';
+    if (typeof window.showSaveFilePicker !== 'function') return 'no-picker';
+    if (!window.indexedDB) return 'no-idb';
+    return 'ok';
+  }
+
+  function available() { return capability() === 'ok'; }
+
+  function isBrave() {
+    return typeof (navigator.brave && navigator.brave.isBrave) === 'function';
   }
 
   async function init() {
@@ -2047,6 +2085,7 @@ const AutoSave = (() => {
 
   const api = {
     init, enable, attach, disable, resume, restore, flush, schedule, dismiss, refreshPending, available,
+    capability, isBrave,
     fileName: () => (_handle && _handle.name) || '',
     status: () => _state,
     pending: () => _pending,
@@ -2251,6 +2290,15 @@ const DnD = (() => {
     }
   }
 
+  function restoreOrigin() {
+    if (!ghostEl) return;
+    if (_origParent) {
+      if (_origAfter && _origAfter.parentNode === _origParent) _origParent.insertBefore(ghostEl, _origAfter);
+      else _origParent.appendChild(ghostEl);
+    }
+    if (ph && ph.parentNode) ph.remove();
+  }
+
   function onUp(e) {
     e.preventDefault();
     if (!started) { cleanup(); return; }
@@ -2258,15 +2306,23 @@ const DnD = (() => {
     document.removeEventListener('pointerup',   onUp);
     document.removeEventListener('pointercancel', onCancel);
 
-    if (_isCopy && lastPos) {
-      const targetId = lastPos.id;
-      const newPos   = ph.parentNode ? cfg.getPos(lastPos.container, ph) : 0;
-      if (ph.parentNode) ph.remove();
-      const cb = dropCb;
-      const id = dragId;
-      cleanup();
-      cb(id, targetId, newPos, true);
-    } else if (lastPos && ph.parentNode) {
+    if (_isCopy) {
+      if (lastPos) {
+        const targetId = lastPos.id;
+        const newPos   = ph.parentNode ? cfg.getPos(lastPos.container, ph) : 0;
+        if (ph.parentNode) ph.remove();
+        const cb = dropCb;
+        const id = dragId;
+        cleanup();
+        cb(id, targetId, newPos, true);
+      } else {
+        restoreOrigin();
+        cleanup();
+      }
+      return;
+    }
+
+    if (lastPos && ph.parentNode) {
       const newPos = cfg.getPos(lastPos.container, ph);
       ph.replaceWith(ghostEl);
       const targetId = lastPos.id;
@@ -2275,7 +2331,7 @@ const DnD = (() => {
       cleanup();
       cb(id, targetId, newPos, false);
     } else {
-      ph.replaceWith(ghostEl);
+      restoreOrigin();
       cleanup();
     }
   }
@@ -2284,7 +2340,11 @@ const DnD = (() => {
     document.removeEventListener('pointermove', onMove);
     document.removeEventListener('pointerup',   onUp);
     document.removeEventListener('pointercancel', onCancel);
-    if (ph) ph.replaceWith(ghostEl);
+    if (_isCopy) {
+      if (ph && ph.parentNode) ph.remove();
+    } else {
+      restoreOrigin();
+    }
     cleanup();
   }
 
@@ -3071,10 +3131,10 @@ const App = (() => {
         const destListEl = boardEl.querySelector('.list[data-id="' + toListId + '"]');
         const isDestDone = destListEl && destListEl.dataset.done === 'true';
         const card = await mutate(async () => {
-          const c = await DB.createCard(toListId, data.text);
+          let c = await DB.createCard(toListId, data.text);
           await DB.moveCard(c.id, toListId, newPos);
-          if (data.notes) await DB.updateCardNotes(c.id, data.notes);
-          if (data.tags && data.tags.length) await DB.updateCardTags(c.id, data.tags);
+          if (data.notes) c = await DB.updateCardNotes(c.id, data.notes);
+          if (data.tags && data.tags.length) c = await DB.updateCardTags(c.id, data.tags);
           return c;
         });
         const destCards = destListEl && destListEl.querySelector('.cards');
@@ -3497,19 +3557,7 @@ const App = (() => {
   });
 
   // ── EXPORT / IMPORT JSON ──────────────────────────────────
-  document.getElementById('exportBtn').addEventListener('click', async () => {
-    const raw = await DB.exportJSON();
-    const blob = new Blob([raw], { type: 'application/json' });
-    const url  = URL.createObjectURL(blob);
-    const a    = make('a');
-    a.href     = url;
-    a.download = 'kanbanjs-' + new Date().toISOString().slice(0, 10) + '.json';
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 100);
-  });
+  document.getElementById('exportBtn').addEventListener('click', exportBoard);
 
   (() => {
     const importFile = document.getElementById('importFile');
@@ -3564,6 +3612,8 @@ const App = (() => {
   const autosaveAttachBtn  = document.getElementById('autosaveAttach');
   const autosaveNowBtn     = document.getElementById('autosaveNow');
   const autosaveDisableBtn = document.getElementById('autosaveDisable');
+  const autosaveBackupInfoEl = document.getElementById('autosaveBackupInfo');
+  const autosaveExportBtn  = document.getElementById('autosaveExport');
 
   const AUTOSAVE_LABELS = {
     unsupported: 'Indisponible sur ce navigateur',
@@ -3582,11 +3632,75 @@ const App = (() => {
     return 'il y a ' + Math.round(s / 86400) + ' j';
   }
 
-  function refreshAutoSaveUI() {
+  const BACKUP_REMIND_DAYS = 7;
+
+  const AUTOSAVE_REASONS = {
+    insecure:    'La page n\u2019est pas servie en HTTPS : le navigateur bloque l\u2019acc\u00e8s aux fichiers.',
+    'no-idb':    'Le stockage IndexedDB est désactivé (navigation privée ou réglages du navigateur).',
+    'no-picker': 'Votre navigateur ne propose pas l\u2019enregistrement dans un fichier (Safari, Firefox).',
+  };
+
+  function autosaveUnsupportedMessage(cap, brave) {
+    if (cap === 'no-picker' && brave) {
+      return 'Brave désactive l\u2019enregistrement dans un fichier par défaut.<br>'
+           + 'Activez « File System Access API » dans <code>brave://flags</code> (redémarrage requis), '
+           + 'ou utilisez la sauvegarde manuelle ci-dessous.';
+    }
+    return (AUTOSAVE_REASONS[cap] || AUTOSAVE_REASONS['no-picker'])
+         + '<br>Utilisez la sauvegarde manuelle ci-dessous.';
+  }
+
+  function backupDue(info, today) {
+    const ref = info && (info.lastExport || info.firstSeen);
+    if (!ref) return false;
+    const days = Math.round((new Date(today) - new Date(ref)) / 86400000);
+    return days >= BACKUP_REMIND_DAYS;
+  }
+
+  async function backupDueNow(info) {
+    if (!(await DB.hasState())) return false;
+    return backupDue(info || await DB.getBackupInfo(), dateKey(new Date()));
+  }
+
+  function backupInfoText(info) {
+    if (!info || !info.lastExport) return 'Jamais exporté.';
+    const days = Math.round((new Date(dateKey(new Date())) - new Date(info.lastExport)) / 86400000);
+    if (!Number.isFinite(days)) return 'Jamais exporté.';
+    if (days <= 0) return "Exporté aujourd'hui.";
+    if (days === 1) return 'Exporté hier.';
+    return 'Dernier export : il y a ' + days + ' jours.';
+  }
+
+  async function exportBoard() {
+    const raw = await DB.exportJSON();
+    const blob = new Blob([raw], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = make('a');
+    a.href     = url;
+    a.download = 'kanbanjs-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+    try {
+      const info = await DB.getBackupInfo();
+      info.lastExport = dateKey(new Date());
+      if (!info.firstSeen) info.firstSeen = info.lastExport;
+      await DB.setBackupInfo(info);
+    } catch (_) {}
+    await refreshAutoSaveUI();
+  }
+
+  async function refreshAutoSaveUI() {
     const st = AutoSave.status();
     const pending = AutoSave.pending();
     const file = AutoSave.fileName();
+    let info = { firstSeen: null, lastExport: null };
+    try { info = await DB.getBackupInfo(); } catch (_) {}
+    const due = await backupDueNow(info);
 
+    autosaveChip.dataset.action = '';
     if (st === 'paused') {
       autosaveChip.hidden = false;
       autosaveChip.textContent = '\uD83D\uDCBE Réactiver';
@@ -3597,6 +3711,12 @@ const App = (() => {
       autosaveChip.textContent = '\u26A0 Sauvegarde en échec';
       autosaveChip.title = 'La sauvegarde automatique a échoué — cliquer pour ouvrir la configuration';
       autosaveChip.classList.add('warn');
+    } else if ((st === 'unsupported' || st === 'idle') && due) {
+      autosaveChip.hidden = false;
+      autosaveChip.textContent = '\u2B07 Sauvegarder';
+      autosaveChip.title = 'Aucune sauvegarde automatique configurée. ' + backupInfoText(info);
+      autosaveChip.classList.remove('warn');
+      autosaveChip.dataset.action = 'export';
     } else {
       autosaveChip.hidden = true;
     }
@@ -3619,9 +3739,7 @@ const App = (() => {
     const last = AutoSave.lastWriteAt();
     if (last) html += '<br>Dernière écriture : ' + ago(last);
     if (pending) html += '<br>\u23F3 En attente de votre décision : la sauvegarde est suspendue.';
-    if (st === 'unsupported') {
-      html = 'Indisponible sur ce navigateur (Chrome, Edge et Opera le proposent).<br>Utilisez l\u2019export JSON (\u2193) pour sauvegarder manuellement.';
-    }
+    if (st === 'unsupported') html = autosaveUnsupportedMessage(AutoSave.capability(), AutoSave.isBrave());
     autosaveStatusEl.innerHTML = html;
 
     const configured = !!file;
@@ -3630,9 +3748,11 @@ const App = (() => {
     autosaveAttachBtn.disabled   = st === 'unsupported';
     autosaveNowBtn.disabled      = !configured || !!pending;
     autosaveDisableBtn.disabled  = !configured;
+    if (autosaveBackupInfoEl) autosaveBackupInfoEl.textContent = backupInfoText(info);
   }
 
   autosaveChip.addEventListener('click', async () => {
+    if (autosaveChip.dataset.action === 'export') { await exportBoard(); return; }
     if (AutoSave.status() === 'paused') {
       const ok = await AutoSave.resume();
       refreshAutoSaveUI();
@@ -3686,6 +3806,8 @@ const App = (() => {
     flashMessage(autosaveMsgEl, 'Sauvegarde automatique désactivée.', 'success', 3000);
     refreshAutoSaveUI();
   });
+
+  autosaveExportBtn.addEventListener('click', exportBoard);
 
   restoreAcceptBtn.addEventListener('click', async () => {
     const wasReload = AutoSave.pending() === 'reload';
@@ -4357,9 +4479,9 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       const listId = _selList.dataset.id;
       const done   = _selList.dataset.done === 'true';
       const card   = await mutate(async () => {
-        const c = await DB.createCard(listId, data.text);
-        if (data.notes) await DB.updateCardNotes(c.id, data.notes);
-        if (data.tags && data.tags.length) await DB.updateCardTags(c.id, data.tags);
+        let c = await DB.createCard(listId, data.text);
+        if (data.notes) c = await DB.updateCardNotes(c.id, data.notes);
+        if (data.tags && data.tags.length) c = await DB.updateCardTags(c.id, data.tags);
         return c;
       });
       const cardsEl = _selList.querySelector('.cards');
@@ -4828,7 +4950,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     const lists = await DB.getLists();
     const allCards = await DB.getAllCards();
     for (const l of lists) {
-      const listEl = buildList(l, allCards.filter(c => c.listId === l.id));
+      const listEl = buildList(l, allCards.filter(c => c.listId === l.id).sort((a, b) => a.position - b.position));
       boardEl.appendChild(listEl);
       await refreshCountBadge(l.id);
     }
@@ -4845,8 +4967,11 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     try {
       await _rebuild();
       window.addEventListener('storage', _onStorage);
-      AutoSave.onChange(refreshAutoSaveUI);
+      AutoSave.onChange(() => { refreshAutoSaveUI().catch(() => {}); });
       AutoSave.init().then(refreshAutoSaveUI);
+      DB.getBackupInfo().then(info => {
+        if (!info.firstSeen) { info.firstSeen = dateKey(new Date()); return DB.setBackupInfo(info); }
+      }).then(refreshAutoSaveUI).catch(() => {});
       refreshAutoSaveUI();
       document.getElementById('helpBtn').addEventListener('click', () => {
         document.querySelector('.cheatsheet-overlay').classList.toggle('open');
@@ -4864,7 +4989,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     }
   }
 
-  return { init, _rebuild, dateKey };
+  return { init, _rebuild, dateKey, backupDue, autosaveUnsupportedMessage };
 })();
 
 App.init();
@@ -4914,6 +5039,20 @@ window.__testAPI = (() => {
         case 'autoSaveFileName': result = AutoSave.fileName(); break;
         case 'autoSaveDisable': await AutoSave.disable(); break;
         case 'loadSource':     result = DB.loadSource(); break;
+        case 'autoSaveCapability': result = AutoSave.capability(); break;
+        case 'autosaveMessage': result = App.autosaveUnsupportedMessage(args.cap, args.brave); break;
+        case 'backupDue':      result = App.backupDue(args.info, args.today); break;
+        case 'backupInfo':     result = await DB.getBackupInfo(); break;
+        case 'setBackupInfo':  await DB.setBackupInfo(args.info); break;
+        case 'hasState':       result = await DB.hasState(); break;
+        case 'moveCard':       await DB.moveCard(args.cardId, args.toListId, args.newPos); break;
+        case 'updateCardNotes': result = await DB.updateCardNotes(args.id, args.notes); break;
+        case 'updateCardTags': result = await DB.updateCardTags(args.id, args.tags); break;
+        case 'domCardOrder': {
+          const listEl = document.querySelector('.list[data-id="' + args.listId + '"] .cards');
+          result = listEl ? [...listEl.querySelectorAll('.card-text')].map(e => e.textContent) : [];
+          break;
+        }
         case 'cardCount':      result = (await DB.getAllCards()).length; break;
         case 'listCount':      result = (await DB.getLists()).length; break;
         case 'dateKey':        result = App.dateKey(new Date(args.date)); break;

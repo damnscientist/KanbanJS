@@ -395,6 +395,143 @@ async function run() {
     assert('Fichier compagnon — désactivation', false, e.message);
   }
 
+  // ── 21. Repli export — sonde de capacité et rappel ──────────
+  try {
+    const cap = await send('autoSaveCapability');
+    assert('Sonde de capacité : valeur connue',
+      ['ok', 'insecure', 'no-picker', 'no-idb'].includes(cap), 'capacité = ' + cap);
+
+    const keyOf = async offset => {
+      const d = new Date();
+      d.setDate(d.getDate() - offset);
+      return send('dateKey', { date: d.toISOString() });
+    };
+    const today = await keyOf(0);
+    const d10 = await keyOf(10), d6 = await keyOf(6), d3 = await keyOf(3), d2 = await keyOf(2);
+
+    assert('Rappel dû après 7 jours sans export',
+      (await send('backupDue', { info: { firstSeen: d10, lastExport: null }, today })) === true);
+    assert('Rappel non dû si export récent',
+      (await send('backupDue', { info: { firstSeen: d10, lastExport: d3 }, today })) === false);
+    assert('Rappel non dû si installation récente',
+      (await send('backupDue', { info: { firstSeen: d2, lastExport: null }, today })) === false);
+    assert('Rappel non dû la veille du seuil',
+      (await send('backupDue', { info: { firstSeen: d6, lastExport: null }, today })) === false);
+
+    const mBrave = await send('autosaveMessage', { cap: 'no-picker', brave: true });
+    assert('Message ciblé pour Brave', mBrave.indexOf('brave://flags') !== -1, mBrave);
+    const mInsecure = await send('autosaveMessage', { cap: 'insecure', brave: false });
+    assert('Message ciblé pour contexte non sécurisé', mInsecure.indexOf('HTTPS') !== -1, mInsecure);
+    const mIdb = await send('autosaveMessage', { cap: 'no-idb', brave: false });
+    assert('Message ciblé pour IndexedDB désactivé', mIdb.indexOf('IndexedDB') !== -1, mIdb);
+
+    await send('setBackupInfo', { info: { firstSeen: '2026-01-01', lastExport: '2026-02-01' } });
+    const bi = await send('backupInfo');
+    assert('Infos de sauvegarde persistées',
+      bi.firstSeen === '2026-01-01' && bi.lastExport === '2026-02-01',
+      JSON.stringify(bi));
+    assert('hasState vrai après une mutation', (await send('hasState')) === true);
+  } catch (e) {
+    assert('Repli export — rappel', false, e.message);
+  }
+
+  // ── 22. Ordre des cartes conservé après rebuild et reload ────
+  try {
+    await send('reset');
+    await send('rebuild');
+    const lists = await send('getLists');
+    const tuto = lists.find(l => l.title === 'Tuto');
+    const before = await send('domCardOrder', { listId: tuto.id });
+    const expected = before.slice(1).concat(before[0]);
+    const cards = await send('getCards', { listId: tuto.id });
+    await send('moveCard', { cardId: cards[0].id, toListId: tuto.id, newPos: cards.length - 1 });
+    await send('rebuild');
+    const after = await send('domCardOrder', { listId: tuto.id });
+    assert('Ordre des cartes conservé après rebuild',
+      JSON.stringify(after) === JSON.stringify(expected), JSON.stringify(after));
+
+    await send('reload');
+    await send('rebuild');
+    const afterReload = await send('domCardOrder', { listId: tuto.id });
+    assert('Ordre des cartes conservé après reload',
+      JSON.stringify(afterReload) === JSON.stringify(expected), JSON.stringify(afterReload));
+  } catch (e) {
+    assert('Ordre des cartes', false, e.message);
+  }
+
+  // ── 23. Les deux clés corrompues → copie de secours réparée ──
+  try {
+    await send('corruptState');
+    await send('corruptBackup');
+    await send('reload');
+    const bak = await send('getBackup');
+    let valid = false;
+    try { valid = !!JSON.parse(bak).board; } catch (_) {}
+    assert('Self-heal : copie de secours réparée', valid, 'bak = ' + String(bak).slice(0, 40));
+  } catch (e) {
+    assert('Self-heal : copie de secours réparée', false, e.message);
+  }
+
+  // ── 24. Import invalide rejeté avant écriture ────────────────
+  try {
+    const before = await send('cardCount');
+    let threw = false;
+    try {
+      await send('import', { json: JSON.stringify({ board: { name: 'x' }, lists: [null], cards: [] }) });
+    } catch (_) { threw = true; }
+    assert('Import avec liste nulle rejeté', threw);
+    assert('Board inchangé après import rejeté', (await send('cardCount')) === before);
+  } catch (e) {
+    assert('Import invalide', false, e.message);
+  }
+
+  // ── 25. Le rappel d'export ne survit pas à un reset ──────────
+  try {
+    await send('setBackupInfo', { info: { firstSeen: '2026-01-01', lastExport: null } });
+    await send('reset');
+    const bi = await send('backupInfo');
+    assert('Reset purge les infos de sauvegarde', bi.firstSeen === null && bi.lastExport === null,
+      JSON.stringify(bi));
+  } catch (e) {
+    assert('Reset purge les infos de sauvegarde', false, e.message);
+  }
+
+  // ── 26. Coller une carte préserve notes et tags ─────────────
+  try {
+    const l = await send('createList', { title: 'Collage' });
+    await send('rebuild');
+    const card = await send('createCard', { listId: l.id, text: 'Carte à coller' });
+    await send('updateCardNotes', { id: card.id, notes: 'note importante' });
+    await send('updateCardTags', { id: card.id, tags: ['urgent'] });
+    await send('rebuild');
+    await new Promise(r => setTimeout(r, 150));
+
+    const w  = frame.contentWindow;
+    const d  = frame.contentDocument;
+    const KE = k => d.dispatchEvent(new (w.KeyboardEvent)('keydown', { key: k, bubbles: true, cancelable: true }));
+    const lists = await send('getLists');
+    const idx = lists.findIndex(x => x.id === l.id) + 1;
+    KE(String(idx));
+    await new Promise(r => setTimeout(r, 120));
+    KE('y');
+    await new Promise(r => setTimeout(r, 120));
+    KE('p');
+    await new Promise(r => setTimeout(r, 500));
+
+    const cards = [...d.querySelectorAll('.list[data-id="' + l.id + '"] .card')];
+    const pasted = cards.length === 2 ? cards[1] : null;
+    const notesEl = pasted && pasted.querySelector('.card-notes');
+    const tagsEl  = pasted && pasted.querySelector('.card-tags');
+    assert('Collage : la carte affichée garde ses notes',
+      !!notesEl && notesEl.value === 'note importante',
+      'notes = ' + JSON.stringify(notesEl && notesEl.value));
+    assert('Collage : la carte affichée garde ses tags',
+      !!tagsEl && tagsEl.textContent.indexOf('urgent') !== -1,
+      'tags = ' + (tagsEl && tagsEl.textContent));
+  } catch (e) {
+    assert('Collage notes/tags', false, e.message);
+  }
+
   // ── Résumé ──────────────────────────────────────────────────
   const total = pass + fail;
   const summary = document.createElement('div');
