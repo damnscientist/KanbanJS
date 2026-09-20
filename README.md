@@ -23,7 +23,7 @@ Face à une corvée qui paraît insurmontable (« ranger mon bureau », « faire
 
 ## Quick start
 
-1. **Ouvrir l'app** : rendez-vous sur [https://laurenth.github.io/KanbanJS/](https://laurenth.github.io/KanbanJS/) (ou ouvrez `index.html` via un petit serveur local, voir *Développement*). Tout fonctionne sans serveur, sauf les appels IA qui nécessitent d'être servi en `http(s)`.
+1. **Ouvrir l'app** : rendez-vous sur [https://damnscientist.github.io/KanbanJS/](https://damnscientist.github.io/KanbanJS/) (ou ouvrez `index.html` via un petit serveur local, voir *Développement*). Tout fonctionne sans serveur, sauf les appels IA qui nécessitent d'être servi en `http(s)`.
 2. **Choisir une corvée** : cliquez sur le bouton `+` en bas à droite → sélectionnez une corvée dans la grille de templates. Aucune configuration n'est nécessaire.
 3. **Avancer** : glissez les cartes de `Backlog` → `In Progress` → `Done`, une micro-action à la fois.
 
