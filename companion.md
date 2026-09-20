@@ -27,7 +27,7 @@ un champ texte, un bouton envoyer, et c'est tout.
 ### Fichier
 
 `companion.html` — fichier unique, aucune dépendance. Lit et écrit dans le même
-`localStorage` que `kanban.html` (clé `kanbanjs:state`). La clé streak
+`localStorage` que `index.html` (clé `kanbanjs:state`). La clé streak
 (`kanbanjs:streak`) est lue en lecture seule.
 
 ### Mécanique d'écriture
@@ -38,10 +38,10 @@ un champ texte, un bouton envoyer, et c'est tout.
 3. Persister dans `kanbanjs:state`
 
 La carte arrive donc directement dans le board principal, visible au prochain
-rafraîchissement de `kanban.html` (ou immédiatement s'il est ouvert dans un autre onglet
+rafraîchissement de `index.html` (ou immédiatement s'il est ouvert dans un autre onglet
 — l'utilisateur doit rafraîchir manuellement pour l'instant).
 
-### Modifications nécessaires dans `kanban.html` (module DB)
+### Modifications nécessaires dans `index.html` (module DB)
 
 Le companion a besoin de deux ajouts dans le module `DB` :
 
@@ -95,7 +95,7 @@ Le companion a besoin de deux ajouts dans le module `DB` :
 
 ### DB partagée
 
-Le companion duplique une version allégée du module `DB` de `kanban.html` :
+Le companion duplique une version allégée du module `DB` de `index.html` :
 
 - `DB.getLists()` — lecture seule
 - `DB.getRecentCards(n)` — nouvelle méthode
@@ -123,7 +123,7 @@ function readStreak() {
 Crée un fichier `companion.html` — un companion mobile minimal pour KanbanJS.
 
 Contexte : KanbanJS est un kanban anti-procrastination dans un fichier unique
-`kanban.html` (~3400 lignes). Il stocke ses données dans localStorage sous les
+`index.html` (~3400 lignes). Il stocke ses données dans localStorage sous les
 clés `kanbanjs:state` et `kanbanjs:streak`.
 
 Le companion est une version ultra-light pour mobile permettant uniquement de
@@ -176,7 +176,7 @@ board kanban principal. La tâche arrive automatiquement dans une liste "Inbox".
 
 ## Style visuel
 
-Reprendre les tokens de couleur de kanban.html (fonds sombres par défaut) :
+Reprendre les tokens de couleur de index.html (fonds sombres par défaut) :
 - Fond : #1a1410, surface : #241e1a, texte : #e0d8d0, accent : #e8a85a
 - Police système, 16px minimum sur input (anti-zoom iOS)
 - ~120 lignes de CSS max
@@ -197,5 +197,5 @@ Reprendre les tokens de couleur de kanban.html (fonds sombres par défaut) :
 ## Complexité estimée
 
 - `companion.html` : ~200 lignes (HTML + CSS + JS)
-- Modifications `kanban.html` (module DB) : ~30 lignes
+- Modifications `index.html` (module DB) : ~30 lignes
 - Total : ~230 lignes

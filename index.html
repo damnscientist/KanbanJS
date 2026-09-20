@@ -4207,5 +4207,10 @@ window.__testAPI = (() => {
   return { ready: true };
 })();
 </script>
+<script>
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('./sw.js');
+  }
+</script>
 </body>
 </html>

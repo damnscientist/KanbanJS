@@ -1,0 +1,19 @@
+# Fichiers de process de dev — non publiés
+01-prompt_archi.md
+02-prompt_bugs.md
+03-prompt_visual.md
+04-prompt_qualite.md
+05-prompt_perf.md
+audit.md
+github.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Éditeur
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
