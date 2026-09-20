@@ -19,6 +19,7 @@ Face à une corvée qui paraît insurmontable (« ranger mon bureau », « faire
 - **Undo/redo** : 30 niveaux de snapshots.
 - **Raccourcis vim-like** : pilotage complet au clavier.
 - **Export / import JSON** : vos données restent à vous, sauvegardables en un fichier.
+- **Persistance robuste** : copie de secours automatique (le board se répare seul si la sauvegarde principale est corrompue), synchronisation entre les onglets ouverts, et stockage persistant demandé au navigateur.
 - **Fonctionne hors-ligne** après la première visite (service worker).
 
 ## Quick start
@@ -76,7 +77,7 @@ Le projet est un fichier unique, sans dépendance ni bundler. Pour lancer les te
 python3 -m http.server 8000
 ```
 
-Puis ouvrez [http://localhost:8000/test.html](http://localhost:8000/test.html) (30 tests DB via iframe + postMessage).
+Puis ouvrez [http://localhost:8000/test.html](http://localhost:8000/test.html) (34 tests DB via iframe + postMessage).
 
 ## À propos du développement
 

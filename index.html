@@ -1401,6 +1401,7 @@
    ============================================================ */
 const DB = (() => {
   const KEY = 'kanbanjs:state';
+  const KEY_BAK = 'kanbanjs:state.bak';
   const uid = () => '_' + Math.random().toString(36).slice(2, 10);
 
   const _tutoId    = uid();
@@ -1434,25 +1435,61 @@ const DB = (() => {
   // Cache mémoire (objets bruts, manipulés en place)
   let _state;
   let _saving = true;
+  let _prevJson = null;
 
   // ── Persistence ───────────────────────────────────────────
+  function _isValidState(parsed) {
+    return !!parsed && !!parsed.board && Array.isArray(parsed.lists) && Array.isArray(parsed.cards);
+  }
+
   function _load() {
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (raw) {
+    let raw = null;
+    try { raw = localStorage.getItem(KEY); } catch (_) {}
+    if (raw) {
+      try {
         const parsed = JSON.parse(raw);
-        if (parsed && parsed.board && Array.isArray(parsed.lists) && Array.isArray(parsed.cards)) {
+        if (_isValidState(parsed)) {
+          try {
+            let bakOk = false;
+            const cur = localStorage.getItem(KEY_BAK);
+            if (cur) { try { bakOk = _isValidState(JSON.parse(cur)); } catch (_) {} }
+            if (!bakOk) localStorage.setItem(KEY_BAK, raw);
+          } catch (_) {}
+          return parsed;
+        }
+        console.warn('KanbanJS : état principal invalide, tentative de restauration.');
+      } catch (_) {
+        console.warn('KanbanJS : état principal illisible, tentative de restauration.');
+      }
+    }
+    try {
+      const bak = localStorage.getItem(KEY_BAK);
+      if (bak) {
+        const parsed = JSON.parse(bak);
+        if (_isValidState(parsed)) {
+          try { localStorage.setItem(KEY, bak); } catch (_) {}
+          console.warn('KanbanJS : état restauré depuis la copie de secours.');
           return parsed;
         }
       }
-    } catch (_) { /* ignore */ }
-    return JSON.parse(JSON.stringify(_default));
+    } catch (_) {}
+    const fresh = JSON.parse(JSON.stringify(_default));
+    if (raw !== null) {
+      try { localStorage.setItem(KEY, JSON.stringify(fresh)); } catch (_) {}
+      console.warn('KanbanJS : sauvegarde principale et copie de secours illisibles, board réinitialisé.');
+    }
+    return fresh;
   }
 
   function _save() {
     if (!_saving) return;
     try {
-      localStorage.setItem(KEY, JSON.stringify(_state));
+      const json = JSON.stringify(_state);
+      localStorage.setItem(KEY, json);
+      if (_prevJson !== null && _prevJson !== json) {
+        try { localStorage.setItem(KEY_BAK, _prevJson); } catch (_) {}
+      }
+      _prevJson = json;
       const banner = document.getElementById('quotaWarn');
       if (banner) banner.remove();
     } catch (e) {
@@ -1478,6 +1515,7 @@ const DB = (() => {
 
   // ── Init ──
   _state = _load();
+  _prevJson = JSON.stringify(_state);
 
   return {
     KEY,
@@ -1590,6 +1628,7 @@ const DB = (() => {
 
     // ── Aggregate ───────────────────────────────────────────
     async getAllCards() { return _clone(_state.cards); },
+    async reload()      { _state = _load(); _prevJson = JSON.stringify(_state); },
 
     // ── Batching ────────────────────────────────────────────
     async batch(fn) {
@@ -1607,9 +1646,9 @@ const DB = (() => {
       let parsed;
       try { parsed = JSON.parse(json); } catch (_) { throw new Error('JSON invalide.'); }
       let state, streak;
-      if (parsed.board && Array.isArray(parsed.lists) && Array.isArray(parsed.cards)) {
+      if (_isValidState(parsed)) {
         state = parsed;
-      } else if (parsed.state && parsed.state.board && Array.isArray(parsed.state.lists) && Array.isArray(parsed.state.cards)) {
+      } else if (_isValidState(parsed?.state)) {
         state = parsed.state;
         streak = parsed.streak;
       } else {
@@ -1624,14 +1663,15 @@ const DB = (() => {
     async reset() {
       _state = JSON.parse(JSON.stringify(_default));
       _save();
+      try { localStorage.removeItem(KEY_BAK); } catch (_) {}
     },
     async restoreJSON(json) {
       let parsed;
       try { parsed = JSON.parse(json); } catch (_) { return; }
       let state;
-      if (parsed.board && Array.isArray(parsed.lists) && Array.isArray(parsed.cards)) {
+      if (_isValidState(parsed)) {
         state = parsed;
-      } else if (parsed.state && parsed.state.board && Array.isArray(parsed.state.lists) && Array.isArray(parsed.state.cards)) {
+      } else if (_isValidState(parsed?.state)) {
         state = parsed.state;
       }
       if (state) { _state = state; _save(); }
@@ -2009,6 +2049,17 @@ const App = (() => {
     try { localStorage.setItem(STREAK_KEY, JSON.stringify(data)); } catch (_) {}
   }
 
+  let _persistAsked = false;
+  function requestPersist() {
+    if (_persistAsked) return;
+    _persistAsked = true;
+    if (!navigator.storage || !navigator.storage.persist) return;
+    const ask = navigator.storage.persisted
+      ? navigator.storage.persisted().then(granted => granted || navigator.storage.persist())
+      : navigator.storage.persist();
+    ask.catch(() => {});
+  }
+
   function updateStreak(increment = 1) {
     const s = readStreak();
     const today = dateKey(new Date());
@@ -2023,6 +2074,7 @@ const App = (() => {
     }
     _todayPop = true;
     writeStreak(s);
+    requestPersist();
   }
 
   function adjustStreak(delta) {
@@ -4130,6 +4182,41 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     }, true);
   })();
 
+  // ── SYNC MULTI-ONGLETS ─────────────────────────────────────
+  let _storageTimer = null;
+  let _syncing = false;
+
+  function _editingActive() {
+    if (document.activeElement === boardNameInput) return true;
+    return !!boardEl.querySelector('.card.editing, .card-notes.open, .card-notes-preview.open, .list-title-input.show, .new-card-form.open, .add-list-form.open')
+        || !!document.querySelector('.modal-overlay.open, .search-overlay.open, .cheatsheet-overlay.open');
+  }
+
+  async function _syncFromStorage() {
+    if (_syncing) {
+      _storageTimer = setTimeout(_syncFromStorage, 200);
+      return;
+    }
+    _syncing = true;
+    try {
+      _saveStack(UK, []); _saveStack(RK, []); _saveStack(UKS, []); _saveStack(RKS, []);
+      await DB.reload();
+      if (_editingActive()) {
+        _storageTimer = setTimeout(_syncFromStorage, 200);
+        return;
+      }
+      await _rebuild();
+    } finally {
+      _syncing = false;
+    }
+  }
+
+  function _onStorage(e) {
+    if (e.key !== null && e.key !== DB.KEY && e.key !== STREAK_KEY) return;
+    clearTimeout(_storageTimer);
+    _storageTimer = setTimeout(_syncFromStorage, 200);
+  }
+
   // ── REBUILD ────────────────────────────────────────────────
   async function _rebuild() {
     const boardData = await DB.getBoard();
@@ -4159,6 +4246,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
   async function init() {
     try {
       await _rebuild();
+      window.addEventListener('storage', _onStorage);
       document.getElementById('helpBtn').addEventListener('click', () => {
         document.querySelector('.cheatsheet-overlay').classList.toggle('open');
       });
@@ -4181,6 +4269,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 App.init();
 
 window.__testAPI = (() => {
+  if (!new URLSearchParams(location.search).has('test')) return { ready: false };
   const origin = window.location.origin;
 
   window.addEventListener('message', async (e) => {
@@ -4205,6 +4294,11 @@ window.__testAPI = (() => {
         case 'setStreak':      localStorage.setItem('kanbanjs:streak', JSON.stringify(args)); break;
         case 'rebuild':        await App._rebuild(); break;
         case 'getBoard':       result = await DB.getBoard(); break;
+        case 'renameBoard':    result = await DB.renameBoard(args.name); break;
+        case 'reload':         await DB.reload(); break;
+        case 'corruptState':   localStorage.setItem('kanbanjs:state', '{ ceci n\u2019est pas du JSON'); break;
+        case 'getBackup':      result = localStorage.getItem('kanbanjs:state.bak'); break;
+        case 'corruptBackup':  localStorage.setItem('kanbanjs:state.bak', 'CORROMPU'); break;
         case 'cardCount':      result = (await DB.getAllCards()).length; break;
         case 'listCount':      result = (await DB.getLists()).length; break;
         case 'dateKey':        result = App.dateKey(new Date(args.date)); break;

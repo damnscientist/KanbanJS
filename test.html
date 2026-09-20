@@ -24,7 +24,7 @@
 <h1>KanbanJS — Tests de non-régression</h1>
 <div class="sub">Ouvre index.html en iframe et teste les opérations DB + export/import.</div>
 <div id="status">Chargement de l'iframe…</div>
-<iframe id="frame" src="index.html"></iframe>
+<iframe id="frame" src="index.html?test"></iframe>
 <div id="results"></div>
 
 <script>
@@ -229,6 +229,42 @@ async function run() {
     assert('dateKey au 1er janvier', midnight === '2026-01-01', 'trouvé : ' + midnight);
   } catch (e) {
     assert('dateKey locale', false, e.message);
+  }
+
+  // ── 11. Self-heal (copie de secours) ────────────────────────
+  try {
+    await send('renameBoard', { name: 'SelfHeal-A' });
+    await send('renameBoard', { name: 'SelfHeal-B' });
+    await send('corruptState');
+    await send('reload');
+    const board = await send('getBoard');
+    assert('Self-heal — board restauré depuis la copie de secours', board.name === 'SelfHeal-A',
+      'trouvé : ' + board.name);
+    const lists = await send('getLists');
+    assert('Self-heal — listes intactes', lists.length === 6, 'trouvé : ' + lists.length);
+  } catch (e) {
+    assert('Self-heal', false, e.message);
+  }
+
+  // ── 12. Reset purge la copie de secours ─────────────────────
+  try {
+    await send('reset');
+    const bak = await send('getBackup');
+    assert('Reset purge la copie de secours', bak === null, 'trouvé : ' + bak);
+  } catch (e) {
+    assert('Reset purge la copie de secours', false, e.message);
+  }
+
+  // ── 13. Copie de secours corrompue re-semée au load ─────────
+  try {
+    await send('corruptBackup');
+    await send('reload');
+    const raw = await send('getBackup');
+    let valid = false;
+    try { valid = !!JSON.parse(raw).board; } catch (_) {}
+    assert('Copie de secours corrompue re-semée', valid, 'trouvé : ' + raw);
+  } catch (e) {
+    assert('Copie de secours corrompue re-semée', false, e.message);
   }
 
   // ── Résumé ──────────────────────────────────────────────────

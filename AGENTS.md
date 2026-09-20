@@ -1,6 +1,6 @@
 # KanbanJS — Projet anti-procrastination
 
-Fichier unique `index.html` (~4216 lignes) + `sw.js` (service worker, 26 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne. Publié sur GitHub Pages : https://damnscientist.github.io/KanbanJS/
+Fichier unique `index.html` (~4320 lignes) + `sw.js` (service worker, 26 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne. Publié sur GitHub Pages : https://damnscientist.github.io/KanbanJS/
 
 ## Concept
 
@@ -28,7 +28,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Undo/redo 30 niveaux avec streak synchronisé, reconstruction DOM sans `location.reload()`
 - Parsing robuste du JSON IA (équilibrage bracketing, détection guillemets, strip code fences)
 - Gestion d'erreur complète : bannière `QuotaExceededError`, crash recovery dans `init()`, `AbortController` 60s
-- Tests : 30 tests DB via iframe/postMessage (`test.html`)
+- Tests : 34 tests DB via iframe/postMessage (`test.html`)
 
 **UX & design**
 - Raccourcis clavier vim-like complets : navigation h/l/j/k, actions carte/liste, recherche `Ctrl+K`, undo/redo
@@ -40,8 +40,8 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 ### Faiblesses
 
 **Persistance & sécurité**
-- **localStorage = perte totale au `clear` navigateur** ou changement de machine. L'export JSON existe mais est manuel, sans rappel automatique
-- **Pas de sync multi-onglets** — le dernier à écrire gagne, pas de `storage` event listener
+- **localStorage = perte totale au `clear` navigateur** ou changement de machine. L'export JSON existe mais est manuel, sans rappel automatique. Atténué par la copie de secours automatique (`kanbanjs:state.bak`) et la demande de stockage persistant, mais pas résolu (voir roadmap P1 : fichier compagnon)
+- **Sync multi-onglets partielle** — les changements distants sont désormais répercutés (`storage` event → debounce → reload/rebuild), mais les conflits d'écriture simultanée restent en « dernier écrivain gagne »
 - **Clé API en clair** dans `localStorage` — lisible par toute extension ou script cross-origin
 
 **Fonctionnel**
@@ -115,14 +115,18 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - **Templates** : 12 templates de corvées universelles intégrés, matching fuzzy sur le texte saisi dans le textarea (💡 "Template suggéré"). Zéro API requise.
 
 ### Persistance
-- `localStorage` avec 4 clés :
+- `localStorage` avec 7 clés :
   - `kanbanjs:state` → board, listes, cartes (reset nettoie uniquement celle-ci)
+  - `kanbanjs:state.bak` → copie de secours (état précédent), utilisée par le self-heal de `DB._load()`
   - `kanbanjs:config` → provider, endpoint, apiKey, model
   - `kanbanjs:streak` → `{ streak, lastDate, todayCount, todayDate }` (export/import inclus)
   - Thème (3 clés) :
     - `kanbanjs:theme-mode` → 'dark' | 'light' | 'system'
     - `kanbanjs:theme-dark` → 'warm-night' | 'deep-ocean' | 'forest' | 'tokyo-night'
     - `kanbanjs:theme-light` → 'soft-sand' | 'mint' | 'lavender' | 'tokyo-light'
+- **Self-heal** : si `kanbanjs:state` est illisible ou invalide, `DB._load()` restaure `kanbanjs:state.bak` et répare la clé principale
+- **Sync multi-onglets** : un `storage` event (déclenché par un autre onglet) déclenche après 200 ms un `DB.reload()` immédiat puis un `_rebuild()` différé tant qu'une édition est en cours (les données sont rafraîchies pour éviter d'écraser un changement distant par un `blur` sur état périmé ; seul le DOM attend). Les piles undo/redo sont purgées à la synchro (conflits simultanés : dernier écrivain gagne)
+- **Stockage persistant** : `navigator.storage.persist()` demandé au premier streak (évite l'éviction implicite par le navigateur)
 
 ## Architecture
 
@@ -131,7 +135,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 | Module | Responsabilité | API publique |
 |---|---|---|
 | `initTheme` | IIFE, lit/applique/persiste le thème | lecture au load |
-| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, toggleCollapsed, getCards, getAllCards, createCard, updateCard, updateCardNotes, updateCardTags, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard, exportJSON, importJSON, reset, restoreJSON, batch` |
+| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, toggleCollapsed, getCards, getAllCards, createCard, updateCard, updateCardNotes, updateCardTags, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard, reload, exportJSON, importJSON, reset, restoreJSON, batch` |
 | `DnD` | Moteur de drag & drop générique | `start(dragEl, id, { ghostEl?, ghostClass?, phClass?, getZone, getAfter, getPos, skip? }, onDrop)` |
 | `App` | UI Kanban | `init()` boot la session |
 
@@ -154,7 +158,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 
 ### Limites techniques
 - **Ouverture en `file://`** : l'API IA est bloquée par CORS. L'app fonctionne en `file://` pour le board, les templates et la persistance, mais les appels IA nécessitent d'être servi en `http(s)` — d'où la publication GitHub Pages.
-- **Service worker (`sw.js`)** : cache-first, chemins relatifs (`'./'`), guard non-GET (les POST IA ne doivent pas passer par la Cache API). Enregistré dans `index.html` uniquement en `https:`. **Toute modification publiée d'`index.html` ou `sw.js` doit bumper le nom de cache (`kanbanjs-v1` → `v2`)**, sinon les visiteurs gardent l'ancienne version.
+- **Service worker (`sw.js`)** : cache-first, chemins relatifs (`'./'`), guard non-GET (les POST IA ne doivent pas passer par la Cache API). Enregistré dans `index.html` uniquement en `https:`. **Toute modification publiée d'`index.html` ou `sw.js` doit bumper le nom de cache (`kanbanjs-v1` → `v2` → `v3`)**, sinon les visiteurs gardent l'ancienne version.
 - **Fournisseur IA centralisé** : tout le branchement fournisseur est dans `queryAI` (switch provider → body/headers/parsing)
 
 ### Déploiement
@@ -215,12 +219,12 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
    - **Fichier compagnon (File System Access API)** : action "💾 Sauvegarde automatique…" → `showSaveFilePicker()` ; le `FileSystemFileHandle` est conservé dans IndexedDB (survit aux redémarrages). `DB._save()` déclenche un `_scheduleFileSave()` debouncé (~800 ms). Même format que `exportJSON()` (`{state, streak}`) — zéro nouveau format.
    - **Restauration en un clic** : au boot, si `kanbanjs:state` est vide/corrompu mais que le handle existe et que le fichier contient des données → bannière inline "Vos données ont disparu — Restaurer ?" → un seul clic → `_rebuild()`. Le public cible ne complètera jamais un flow de restauration en 5 étapes.
    - **Multi-machine gratuit** : si l'utilisateur range le fichier dans un dossier synchronisé (Drive, Dropbox, Syncthing), il obtient la sync sans une ligne de code côté app.
-   - **`navigator.storage.persist()`** au premier `updateStreak()` — empêche l'éviction implicite par le navigateur. Ne protège pas du "effacer les données de navigation", d'où le fichier compagnon.
-   - **Sync multi-onglets** (absorbé depuis P2) : `window.addEventListener('storage', …)` → debounce → `_rebuild()`. ~15 lignes. Prérequis si le companion voit le jour (la spec `companion.md` prévoit aujourd'hui d'"accepter le race").
-   - **Self-heal** : dans `DB._load()`, si le JSON est corrompu, tenter une copie de secours avant de retomber sur `_default` — perdre son board pour un JSON cassé est insupportable.
+   - **`navigator.storage.persist()`** au premier `updateStreak()` — empêche l'éviction implicite par le navigateur. Ne protège pas du "effacer les données de navigation", d'où le fichier compagnon. ✅ **Implémenté** — `requestPersist()` (flag `_persistAsked`, vérifie `persisted()` avant de demander).
+   - **Sync multi-onglets** (absorbé depuis P2) : `window.addEventListener('storage', …)` → debounce → `_rebuild()`. ~15 lignes. Prérequis si le companion voit le jour (la spec `companion.md` prévoit aujourd'hui d'"accepter le race"). ✅ **Implémenté** — `_onStorage()` filtre les clés (`state`, `streak`, `clear`), debounce 200 ms, `DB.reload()` puis `_rebuild()` ; les conflits simultanés restent en dernier écrivain gagne.
+   - **Self-heal** : dans `DB._load()`, si le JSON est corrompu, tenter une copie de secours avant de retomber sur `_default` — perdre son board pour un JSON cassé est insupportable. ✅ **Implémenté** — `kanbanjs:state.bak` (état précédent, écrit par `_save()`), restauré et réinjecté dans la clé principale par `_load()`.
    - **Replis et pièges** : Safari/Firefox n'ont pas les pickers → feature detection + repli sur l'export manuel existant et un rappel périodique ("Dernier export : il y a N jours") ; permission à réactiver à chaque session Chromium (état discret dans le header, jamais d'`alert()`) ; conflits multi-machines = dernier écrivain gagne (assumé, à documenter dans le README).
    - **Ne PAS faire** : WebDAV, GitHub Gist, backend proxy, compte utilisateur — chacun brise la philosophie zéro-compte sans mieux protéger que le fichier chez l'utilisateur.
-   - **Estimation** : ~175 lignes (~150 fichier compagnon + ~25 persist/storage event/self-heal).
+   - **Estimation** : ~175 lignes au total — ✅ ~25 livrées le 2026-09-20 (persist + storage event + self-heal), ~150 restantes (fichier compagnon + restauration 1 clic + replis navigateurs).
 6. **Feedback de progression** — La barre de progression existe mais il n'y a pas de gratification quand on termine une tâche. ✅ **Streak + pulse + compteur du jour** implémentés.
 7. **UX mobile / Companion** — La spec `companion.md` décrit un entonnoir minimal mobile (champ texte → liste Inbox). Le fichier `companion.html` (~200 lignes) reste à implémenter. La capture se fait sur mobile, l'exécution sur desktop.
 
@@ -238,6 +242,17 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 17. **Fournisseur LM Studio** — Ajouter `lmstudio` au switch `queryAI`, sur le modèle de `ollama` : serveur local compatible OpenAI (`http://localhost:1234/v1/chat/completions` par défaut), clé API optionnelle (LM Studio n'en exige pas), timeout long (~5 min) car les modèles locaux sont lents. Parsing identique à OpenAI. Complète l'offre « IA locale sans compte » à côté d'Ollama — utile pour les utilisateurs qui préfèrent l'interface graphique de LM Studio pour gérer/télécharger leurs modèles.
 
 ## Changelog
+
+### 2026-09-20 — Robustesse de la persistance (v1.0.2)
+
+- **Self-heal** : `DB._load()` restaure la copie de secours `kanbanjs:state.bak` (état précédent, écrite par `_save()`) si `kanbanjs:state` est illisible ou invalide, puis répare la clé principale. Si la copie est absente **ou corrompue**, elle est re-semée depuis l'état principal au chargement. Si les deux sont illisibles, la clé est réparée et un avertissement console est émis. Évite de perdre un board sur un JSON cassé.
+- **Sync multi-onglets** : `window.addEventListener('storage', …)` → debounce 200 ms → `DB.reload()` (nouvelle méthode publique) puis `_rebuild()`. Les **données** sont rechargées immédiatement ; seule la **reconstruction du DOM** est différée tant qu'une édition est en cours (carte, notes, aperçu, renommage, formulaire, modale, recherche, cheatsheet). Sans cette séparation, le `blur` d'une édition sauvait un état périmé et écrasait le changement distant. Les piles undo/redo sont purgées à la synchro pour éviter qu'un `u` ne révoque un travail distant. Les changements d'un autre onglet apparaissent sans rechargement ; les conflits simultanés restent en « dernier écrivain gagne ». L'événement `storage` avec `key === null` (clear) est aussi traité.
+- **Reset** : `DB.reset()` purge désormais `kanbanjs:state.bak`, pour que la copie de secours ne ressuscite pas un board volontairement effacé (contrat « toutes les données seront perdues »).
+- **Stockage persistant** : `navigator.storage.persist()` demandé au premier `updateStreak()` (`requestPersist()`), pour limiter l'éviction implicite par le navigateur.
+- **Abstraction** : la validation de structure (`board` + `lists[]` + `cards[]`) est centralisée dans `_isValidState()`, réutilisée par `_load()`, `importJSON()` et `restoreJSON()`.
+- **Surface de test** : `window.__testAPI` n'est plus enregistré que si l'URL contient `?test` (inerte sur le site publié). Ferme la lecture/écriture à distance du board via une iframe sandboxée (`origin 'null'`).
+- **Tests** : 4 tests ajoutés dans `test.html` (self-heal après corruption, reset purge la copie, copie corrompue re-semée) — 34/34. Hooks : `renameBoard`, `reload`, `corruptState`, `getBackup`, `corruptBackup`.
+- **Service worker** : cache bumpé `kanbanjs-v2` → `v3`.
 
 ### 2026-09-20 — Correctif streak UTC (v1.0.1)
 
