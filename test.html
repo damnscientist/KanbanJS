@@ -595,6 +595,168 @@ async function run() {
     assert('Message de restauration', false, e.message);
   }
 
+  // ── 31. Multiboard — module DB ──────────────────────────────
+  let boardB = null;
+  try {
+    await send('boardUse', { id: 'main' });
+    await send('rawRemove', { key: 'kanbanjs:boards' });
+    await send('reload');
+    const boards = await send('boardList');
+    assert('Sans index : un seul board « main », actif, streak compté, suivi désactivé',
+      boards.length === 1 && boards[0].id === 'main' && boards[0].active
+        && boards[0].streak === true && boards[0].staleDays === 0, boards);
+    assert('Sans index : le board principal garde la clé historique kanbanjs:state',
+      (await send('boardKey')) === 'kanbanjs:state');
+    const lists0 = await send('getLists');
+    await send('createCard', { listId: lists0[0].id, text: 'mono-board' });
+    await send('renameBoard', { name: (await send('getBoard')).name });
+    assert('Mono-board : les écritures sur le board principal n’écrivent jamais l’index',
+      (await send('rawGet', { key: 'kanbanjs:boards' })) === null);
+
+    let unknown = false;
+    try { await send('boardUse', { id: '_inexistant' }); } catch (_) { unknown = true; }
+    assert('useBoard refuse un id inconnu', unknown && (await send('boardActive')) === 'main');
+
+    let denied = false;
+    try { await send('rawGet', { key: 'kanbanjs:config' }); } catch (_) { denied = true; }
+    assert('Surface de test : la config (clé API) n’est pas lisible', denied);
+
+    const mainCards = await send('cardCount');
+    const mainState = await send('rawGet', { key: 'kanbanjs:state' });
+    const mainBak = await send('rawGet', { key: 'kanbanjs:state.bak' });
+    const mainBackup = await send('rawGet', { key: 'kanbanjs:backup' });
+    boardB = await send('boardCreate', { name: 'Équipe' });
+    const afterCreate = await send('boardList');
+    assert('Création : index écrit, board ajouté sans changer le board actif',
+      afterCreate.length === 2 && afterCreate[1].name === 'Équipe'
+        && (await send('boardActive')) === 'main', afterCreate);
+    assert('Création : le board principal n’est pas modifié',
+      (await send('rawGet', { key: 'kanbanjs:state' })) === mainState);
+
+    const inBatch = await send('boardUseInBatch', { id: boardB.id });
+    assert('useBoard refusé pendant un batch', inBatch.refused && inBatch.active === 'main', inBatch);
+
+    await send('boardUse', { id: boardB.id });
+    const bLists = await send('getLists');
+    assert('Nouveau board : Backlog / In Progress / Done, sans Tuto ni carte',
+      bLists.map(l => l.title).join('|') === 'Backlog|In Progress|Done'
+        && bLists[2].done === true && (await send('cardCount')) === 0, bLists.map(l => l.title));
+    assert('Nouveau board : clé suffixée',
+      (await send('boardKey')) === 'kanbanjs:state:' + boardB.id);
+    const metaB = await send('boardMeta');
+    assert('Nouveau board : streak non compté, seuil de suivi 14 j',
+      metaB.streak === false && metaB.staleDays === 14, metaB);
+
+    const card = await send('createCard', { listId: bLists[0].id, text: 'Projet Alpha' });
+    await send('boardUse', { id: 'main' });
+    const mainAll = await send('getBoardCards');
+    assert('Isolation : la carte du board B n’apparaît pas sur le board principal',
+      mainAll.length === mainCards && !mainAll.some(c => c.text === 'Projet Alpha'));
+    assert('Isolation : les noms des autres boards sont lisibles depuis le board actif',
+      (await send('boardList')).find(b => b.id === boardB.id).name === 'Équipe');
+    await send('boardUse', { id: boardB.id });
+    assert('Isolation : retour sur B, la carte est toujours là',
+      (await send('getBoardCards')).some(c => c.id === card.id));
+
+    assert('Suivi : une carte créée porte notesUpdatedAt', typeof card.notesUpdatedAt === 'string');
+    await new Promise(r => setTimeout(r, 15));
+    const same = await send('updateCardNotes', { id: card.id, notes: '' });
+    assert('Suivi : une note inchangée ne touche pas notesUpdatedAt',
+      same.notesUpdatedAt === card.notesUpdatedAt);
+    const changed = await send('updateCardNotes', { id: card.id, notes: 'Point du jour' });
+    assert('Suivi : une note modifiée met à jour notesUpdatedAt',
+      changed.notesUpdatedAt > card.notesUpdatedAt, [card.notesUpdatedAt, changed.notesUpdatedAt]);
+
+    const s0 = { streak: 7, lastDate: '2026-01-01', todayCount: 2, todayDate: '2026-01-01' };
+    await send('setStreak', s0);
+    const exp = JSON.parse(await send('export'));
+    assert('Board sans streak : l’export n’embarque pas le streak', exp.streak === null, exp.streak);
+    await send('import', { json: JSON.stringify({ state: exp.state, streak: JSON.stringify({ streak: 99, lastDate: '2020-01-01', todayCount: 0, todayDate: '2020-01-01' }) }) });
+    assert('Board sans streak : un import ne réécrit pas le streak',
+      (await send('getStreak')).streak === 7);
+    await send('boardSetMeta', { patch: { streak: true } });
+    assert('Board avec streak : l’export embarque le streak',
+      JSON.parse(await send('export')).streak !== null);
+    await send('boardSetMeta', { patch: { streak: false } });
+
+    const bad = await send('boardSetMeta', { patch: { staleDays: -3 } });
+    const ok = await send('boardSetMeta', { patch: { staleDays: 7 } });
+    assert('Méta : seuil négatif ignoré, seuil valide enregistré',
+      bad.staleDays === 14 && ok.staleDays === 7, [bad, ok]);
+
+    await send('rawSet', { key: 'kanbanjs:state:' + boardB.id, value: '{ cassé' });
+    await send('rawSet', { key: 'kanbanjs:state:' + boardB.id + '.bak', value: 'CORROMPU' });
+    await send('reload');
+    const healed = await send('getLists');
+    assert('Self-heal d’un board secondaire : gabarit vide, jamais le Tuto',
+      healed.map(l => l.title).join('|') === 'Backlog|In Progress|Done', healed.map(l => l.title));
+
+    await send('renameBoard', { name: 'Équipe' });
+    await send('createCard', { listId: healed[0].id, text: 'à effacer' });
+    await send('reset');
+    const afterReset = await send('getLists');
+    assert('Reset d’un board secondaire : gabarit vide, nom conservé',
+      afterReset.length === 3 && (await send('cardCount')) === 0
+        && (await send('getBoard')).name === 'Équipe');
+
+    assert('Isolation : les écritures sur B laissent intactes les clés du board principal',
+      (await send('rawGet', { key: 'kanbanjs:state' })) === mainState
+        && (await send('rawGet', { key: 'kanbanjs:state.bak' })) === mainBak
+        && (await send('rawGet', { key: 'kanbanjs:backup' })) === mainBackup);
+
+    const goodIndex = await send('rawGet', { key: 'kanbanjs:boards' });
+    await send('rawSet', { key: 'kanbanjs:boards', value: '{ index cassé' });
+    const rebuilt = await send('boardList');
+    assert('Index corrompu : les boards secondaires sont retrouvés depuis leurs clés',
+      rebuilt.some(b => b.id === boardB.id && b.name === 'Équipe') && rebuilt[0].id === 'main', rebuilt);
+    const other = await send('boardCreate', { name: 'Autre' });
+    const reIndexed = (await send('boardList')).map(b => b.id);
+    assert('Index corrompu : une création ne fait pas disparaître les boards existants',
+      reIndexed.includes(boardB.id) && reIndexed.includes(other.id), reIndexed);
+    await send('boardDelete', { id: other.id });
+    await send('rawSet', { key: 'kanbanjs:boards', value: goodIndex });
+
+    let refusedActive = false;
+    try { await send('boardDelete', { id: boardB.id }); } catch (_) { refusedActive = true; }
+    assert('Suppression : le board actif ne peut pas être supprimé', refusedActive);
+    let refusedMain = false;
+    try { await send('boardDelete', { id: 'main' }); } catch (_) { refusedMain = true; }
+    assert('Suppression : le board principal ne peut pas être supprimé, même inactif', refusedMain);
+    await send('boardUse', { id: 'main' });
+    assert('Suppression : un board secondaire est supprimé', (await send('boardDelete', { id: boardB.id })) === true);
+    const left = await send('boardList');
+    const leftKey = await send('rawGet', { key: 'kanbanjs:state:' + boardB.id });
+    const leftBak = await send('rawGet', { key: 'kanbanjs:state:' + boardB.id + '.bak' });
+    const leftBackup = await send('rawGet', { key: 'kanbanjs:backup:' + boardB.id });
+    assert('Suppression : index et clés du board nettoyés',
+      left.length === 1 && left[0].id === 'main' && leftKey === null && leftBak === null && leftBackup === null, left);
+    assert('Suppression : le board principal est intact',
+      (await send('cardCount')) === mainCards);
+    boardB = null;
+
+    const gone = await send('boardCreate', { name: 'Supprimé ailleurs' });
+    await send('boardUse', { id: gone.id });
+    await send('rawSet', { key: 'kanbanjs:boards', value: JSON.stringify([{ id: 'main', streak: true, staleDays: 0 }]) });
+    for (const sfx of ['', '.bak']) await send('rawRemove', { key: 'kanbanjs:state:' + gone.id + sfx });
+    const goneLists = await send('getLists');
+    await send('createCard', { listId: goneLists[0].id, text: 'écrite avant la synchro' });
+    assert('Board supprimé dans un autre onglet : une écriture avant la synchro ne recrée pas la clé',
+      (await send('rawGet', { key: 'kanbanjs:state:' + gone.id })) === null);
+    await send('reload');
+    assert('Board supprimé dans un autre onglet : rechargement → retour sur le board principal',
+      (await send('boardActive')) === 'main' && (await send('cardCount')) === mainCards);
+    assert('Board supprimé dans un autre onglet : aucune clé orpheline recréée',
+      (await send('rawGet', { key: 'kanbanjs:state:' + gone.id })) === null
+        && !(await send('boardList')).some(b => b.id === gone.id));
+  } catch (e) {
+    assert('Multiboard — module DB', false, e.message);
+  } finally {
+    try {
+      await send('boardUse', { id: 'main' });
+      if (boardB) await send('boardDelete', { id: boardB.id });
+    } catch (_) {}
+  }
+
   // ── Résumé ──────────────────────────────────────────────────
   const total = pass + fail;
   const summary = document.createElement('div');
