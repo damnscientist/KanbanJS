@@ -1736,6 +1736,82 @@ async function run() {
     }
   }
 
+  // ── 40. Prompt de décomposition v2 : requêtes, garde-fous, titre, remplacement ──
+  let boardV = null;
+  {
+    const d = frame.contentDocument;
+    const w = frame.contentWindow;
+    const tick = (ms = 120) => new Promise(r => setTimeout(r, ms));
+    const cfgBefore = w.localStorage.getItem('kanbanjs:config');
+    const realFetch = w.fetch;
+    let sent = null;
+    let reply = ['a1', 'a2'];
+    w.fetch = async (url, opts) => {
+      sent = { url: String(url), body: JSON.parse(opts.body) };
+      const c = JSON.stringify(reply);
+      const p = JSON.parse(opts.body);
+      const body = p.contents ? { candidates: [{ content: { parts: [{ text: c }] } }] }
+        : p.system ? { content: [{ text: c }] }
+        : { choices: [{ message: { content: c } }] };
+      return { ok: true, status: 200, statusText: 'OK', text: async () => JSON.stringify(body) };
+    };
+    const setCfg = provider => w.localStorage.setItem('kanbanjs:config', JSON.stringify({ provider, endpoint: 'http://ia.invalid/v1', apiKey: 'k', model: 'm' }));
+    const run = async task => {
+      d.getElementById('decomposeFab').click(); await tick();
+      d.getElementById('decomposeInput').value = task;
+      d.getElementById('decomposeBtn').click(); await tick(400);
+      d.getElementById('decomposeModal').classList.remove('open');
+    };
+    try {
+      await send('appSwitch', { id: 'main' });
+      boardV = await send('appCreateBoard', { name: 'Prompt V' });
+      await send('appSwitch', { id: boardV.id });
+      const task = 'Payer 50 $& de frais';
+      const tagged = '<tache>\n' + task + '\n</tache>';
+
+      setCfg('openai'); await run(task);
+      assert('OpenAI : prompt système fixe, tâche dans le message utilisateur (intacte malgré $&)',
+        !sent.body.messages[0].content.includes('Payer') && sent.body.messages[0].content.includes('Décomposer la suite')
+          && sent.body.messages[1].role === 'user' && sent.body.messages[1].content === tagged, sent.body.messages[1].content);
+      setCfg('ollama'); await run(task);
+      assert('Ollama : même structure', sent.body.messages[1].content === tagged && !sent.body.messages[0].content.includes('Payer'));
+      setCfg('anthropic'); await run(task);
+      assert('Anthropic : prompt dans system, tâche dans le message', !sent.body.system.includes('Payer') && sent.body.messages[0].content === tagged);
+      setCfg('google'); await run(task);
+      assert('Gemini : prompt dans systemInstruction, tâche dans contents',
+        sent.body.systemInstruction && !sent.body.systemInstruction.parts[0].text.includes('Payer')
+          && sent.body.contents[0].role === 'user' && sent.body.contents[0].parts[0].text === tagged);
+
+      setCfg('openai');
+      let lists = await send('getLists');
+      assert('Titre de la liste : « IA · » + la tâche', lists[0].title === 'IA · ' + task, lists[0].title);
+      assert('Même tâche relancée : la liste est remplacée, pas dupliquée',
+        lists.filter(l => l.title === 'IA · ' + task).length === 1);
+
+      reply = Array.from({ length: 15 }, (_, i) => (i + 1) + '. Étape ' + (i % 13));
+      await run('Ranger tout le grenier de la maison de campagne avant l’hiver');
+      lists = await send('getLists');
+      const long = lists[0];
+      const longCards = (await send('getCards', { listId: long.id })).map(c => c.text);
+      assert('Titre long : tronqué à 40 caractères avec « … »',
+        long.title.startsWith('IA · Ranger tout le grenier') && long.title.endsWith('…') && long.title.length <= 46, long.title);
+      assert('Autre tâche : nouvelle liste, la précédente est conservée',
+        lists.some(l => l.title === 'IA · ' + task) && lists.filter(l => l.title.startsWith('IA ')).length === 2);
+      assert('Garde-fous : 12 actions au plus, sans numérotation ni doublon',
+        longCards.length === 12 && longCards.every(t => /^Étape \d+$/.test(t)) && new Set(longCards).size === 12, longCards);
+    } catch (e) {
+      assert('Prompt de décomposition v2', false, e.message);
+    } finally {
+      w.fetch = realFetch;
+      if (cfgBefore === null) w.localStorage.removeItem('kanbanjs:config'); else w.localStorage.setItem('kanbanjs:config', cfgBefore);
+      d.getElementById('decomposeModal').classList.remove('open');
+      try {
+        await send('appSwitch', { id: 'main' });
+        if (boardV) await send('appDeleteBoard', { id: boardV.id });
+      } catch (_) {}
+    }
+  }
+
   // ── Résumé ──────────────────────────────────────────────────
   const total = pass + fail;
   const summary = document.createElement('div');

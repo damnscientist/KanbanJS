@@ -30,7 +30,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Undo/redo 30 niveaux avec streak synchronisé, reconstruction DOM sans `location.reload()`
 - Parsing robuste du JSON IA (équilibrage bracketing, détection guillemets, strip code fences)
 - Gestion d'erreur complète : bannière `QuotaExceededError`, crash recovery dans `init()`, `AbortController` 60s
-- Tests : 234 tests via iframe/postMessage (`test.html`) — DB, fichier compagnon, multiboard, interface (DOM de l'iframe)
+- Tests : 243 tests via iframe/postMessage (`test.html`) — DB, fichier compagnon, multiboard, interface (DOM de l'iframe)
 
 **UX & design**
 - Raccourcis clavier vim-like complets : navigation h/l/j/k, actions carte/liste, recherche `Ctrl+K`, undo/redo
@@ -113,9 +113,9 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Modal "Décomposer une tâche" : si l'API est configurée → textarea + bouton Décomposer (IA) + suggestion template fuzzy. Si pas d'API → grille des 12 templates cliquables + lien vers la config.
 - **Abstraction fournisseur** : supporte OpenAI/compatible, Anthropic, Google Gemini, Ollama (switch dans `queryAI`)
 - Appel POST à l'API avec format spécifique par fournisseur
-- Prompt système : décomposition en micro-actions anti-procrastination
+- Prompt système (v2, 2026-11-01) : 5 à 12 micro-actions centrées sur les 15-20 premières minutes, première action < 30 s sans décision, « Décomposer la suite » en dernier si la tâche déborde, un exemple d'ancrage, règle anti-injection
 - Parsing robuste de la réponse JSON (équilibrage des crochets, détection des guillemets, strip code fences)
-- Résultat : liste "IA" créée en position 0 avec les cartes générées
+- Résultat : liste « IA · <tâche> » (tronquée à 40 car.) créée en position 0 du board actif ; relancer **la même tâche** remplace sa liste, une autre tâche crée une nouvelle liste. Garde-fou côté app : 12 items max, numérotation et doublons retirés. Ignoré si le board a changé pendant la requête
 - Panneau de debug toggleable (logs requête/réponse/parsing)
 - **Templates** : 12 templates de corvées universelles intégrés, matching fuzzy sur le texte saisi dans le textarea (💡 "Template suggéré"). Zéro API requise.
 
@@ -203,7 +203,7 @@ Référence technique, à lire avant de toucher à `DB`, `AutoSave`, aux piles u
 
 ### Limites techniques
 - **Ouverture en `file://`** : l'API IA est bloquée par CORS. L'app fonctionne en `file://` pour le board, les templates et la persistance, mais les appels IA nécessitent d'être servi en `http(s)` — d'où la publication GitHub Pages.
-- **Service worker (`sw.js`)** : cache-first, chemins relatifs (`'./'`), guard non-GET (les POST IA ne doivent pas passer par la Cache API). Enregistré dans `index.html` uniquement en `https:`. **Toute modification publiée d'`index.html` ou `sw.js` doit bumper le nom de cache (`kanbanjs-v1` → `v2` → `v3` → `v4` → `v5` → `v6` → `v7`)**, sinon les visiteurs gardent l'ancienne version.
+- **Service worker (`sw.js`)** : cache-first, chemins relatifs (`'./'`), guard non-GET (les POST IA ne doivent pas passer par la Cache API). Enregistré dans `index.html` uniquement en `https:`. **Toute modification publiée d'`index.html` ou `sw.js` doit bumper le nom de cache (`kanbanjs-v1` → `v2` → `v3` → `v4` → `v5` → `v6` → `v7` → `v8`)**, sinon les visiteurs gardent l'ancienne version.
 - **Fournisseur IA centralisé** : tout le branchement fournisseur est dans `queryAI` (switch provider → body/headers/parsing)
 
 ### Déploiement
@@ -230,7 +230,7 @@ Référence technique, à lire avant de toucher à `DB`, `AutoSave`, aux piles u
 
 ### Architecture du code
 - L'ordre des modales et du debug suit le flow : config → décompose
-- Le prompt système est dans `PROMPT_SYSTEM` (template literal, substitution `{{TASK}}`)
+- Le prompt système est dans `PROMPT_SYSTEM` (template literal **fixe**, sans la tâche). La tâche part dans le **message utilisateur**, balisée par `taskMessage(task)` (`<tache>…</tache>`) ; Gemini reçoit le prompt via `systemInstruction`. Ne jamais réinjecter la saisie dans le prompt système (ni via `String.replace`, qui interprète `$&`, `$'`…)
 - La config API (provider, endpoint, apiKey, model) est stockée en localStorage, lue par `readAIConfig()` dans App
 - Le fournisseur est branché dans `queryAI` via un switch (`'openai'` / `'anthropic'` / `'google'` / `'ollama'`), chaque branche construit body + headers + parsing de réponse
 - Le board est initialisé avec 6 listes par défaut via `DB._default` (dont "Tuto" avec cartes-exemples et "Ranger une surface" avec micro-tâches d'onboarding)

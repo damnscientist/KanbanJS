@@ -11,7 +11,7 @@ Face à une corvée qui paraît insurmontable (« ranger mon bureau », « faire
 - **Board kanban** : listes et cartes, renommage, réordonnancement par glisser-déposer, repli des listes.
 - **Plusieurs boards** : un board personnel, et autant de boards que vous voulez à côté — par exemple pour suivre les projets d'une équipe. Menu `▾` à côté du nom du board (ou touche `b`) pour changer ou créer ; Configuration → **Boards** pour les réglages. Chaque board a ses listes, son historique d'annulation et son fichier de sauvegarde. Le streak et les confettis restent réservés aux boards que vous choisissez.
 - **Suivi de projet** : une carte = un projet, le suivi se fait dans la note. La touche `i` (ou 📅) ajoute une entrée datée en haut de la note ; une carte dont la note n'a pas bougé depuis 14 jours (réglable par board) s'estompe et affiche `⏳ N j`.
-- **Décomposition IA** : décrivez une corvée, l'IA la découpe en micro-actions dans une liste dédiée. Supporte OpenAI (et compatible), Anthropic, Google Gemini et Ollama (modèles locaux).
+- **Décomposition IA** : décrivez une corvée, l'IA la découpe en 5 à 12 micro-actions — de quoi démarrer dans les 15 premières minutes, la première prenant moins de 30 secondes — dans une liste « IA · <votre tâche> ». Pour une grosse tâche, la dernière carte vous invite à décomposer la suite. Supporte OpenAI (et compatible), Anthropic, Google Gemini et Ollama (modèles locaux).
 - **Templates intégrés** : 12 corvées universelles (vaisselle, lessive, rangement, courrier, facture, mail, dossier, réunion, RDV médical, départ, boîte mail, fichiers du bureau) prêtes à l'emploi, avec suggestion automatique par correspondance floue — **aucune clé API requise**.
 - **Liste « terminée »** : marquez une liste comme Done, ses cartes se barrent et affichent la date de complétion.
 - **Notes markdown** : chaque carte peut contenir une note en markdown (gras, italique, code, liens, titres, listes, ligne horizontale), avec un cycle édition → aperçu → fermé.
@@ -92,7 +92,7 @@ Le projet est un fichier unique, sans dépendance ni bundler. Pour lancer les te
 python3 -m http.server 8000
 ```
 
-Puis ouvrez [http://localhost:8000/test.html](http://localhost:8000/test.html) (234 tests via iframe + postMessage : données, sauvegarde, multiboard, interface).
+Puis ouvrez [http://localhost:8000/test.html](http://localhost:8000/test.html) (243 tests via iframe + postMessage : données, sauvegarde, multiboard, interface).
 
 L'historique des versions est dans [CHANGELOG.md](CHANGELOG.md).
 

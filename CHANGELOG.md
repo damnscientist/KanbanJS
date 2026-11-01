@@ -2,6 +2,16 @@
 
 Historique des versions, de la plus récente à la plus ancienne. Le contexte de développement (architecture, conventions, roadmap) est dans [`AGENTS.md`](AGENTS.md).
 
+## 2026-11-01 — Prompt de décomposition v2 (v1.2.1)
+
+- **Moins de cartes, mieux ciblées** : 5 à 12 micro-actions centrées sur les 15 à 20 premières minutes (au lieu de 6 à 35 pour toute la tâche — un mur de 35 cartes recréait le blocage que l'outil doit casser). Pour une grosse tâche, la dernière carte est « Décomposer la suite » : on décompose au fur et à mesure.
+- **Première action triviale** : moins de 30 secondes, physique, sans décision. Tâche floue → une action pour préciser le résultat attendu. Pas de numérotation, pas de doublon. Un exemple d'ancrage (utile aux petits modèles locaux).
+- **Tâche dans le message utilisateur** : le prompt système est désormais fixe (mis en cache par les fournisseurs) et la saisie, balisée `<tache>…</tache>`, ne peut plus se faire passer pour une consigne. Gemini reçoit enfin un vrai prompt système (`systemInstruction`).
+- **Bug corrigé** : la tâche était insérée par `String.replace`, qui interprète `$&`, `` $` `` et `$'` — une saisie comme « Payer 50 $& de frais » corrompait le prompt.
+- **Liste nommée d'après la tâche** : « IA · <tâche> » au lieu de « IA (1234 tokens) ». Relancer la même tâche remplace sa liste ; une autre tâche crée une nouvelle liste au lieu d'écraser la précédente. Garde-fou côté app : 12 items au plus, numérotation et doublons retirés.
+- **Tests** : 234 → 243 (requête réellement envoyée pour les 4 fournisseurs, `$&` intact, plafond, titre, remplacement), chaque changement validé par mutation inverse.
+- **Service worker** : cache `kanbanjs-v7` → `v8`. `VERSION` 1.2.1.
+
 ## 2026-11-01 — Multiboard et suivi de projet (v1.2.0)
 
 - **Plusieurs boards** : pour suivre les projets d'une équipe à côté du board personnel (1 carte = 1 projet, suivi dans la note). Menu `▾` à côté du nom du board et raccourci `b` (filtre insensible à la casse et aux accents, création « Créer « … » »). Configuration → onglet **Boards** : « compte pour le streak », seuil de suivi, suppression. Chaque board a ses listes, son historique d'annulation et son fichier de sauvegarde. Le presse-papier traverse les boards (couper sur l'un, coller sur l'autre).
