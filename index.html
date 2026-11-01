@@ -1992,6 +1992,16 @@ const AutoSave = (() => {
   const IDB_NAME  = 'kanbanjs';
   const IDB_STORE = 'handles';
   const IDB_KEY   = 'companion';
+  const idbKeyFor = id => (id === DB.MAIN ? IDB_KEY : IDB_KEY + ':' + id);
+  let _boundId = DB.activeBoard();
+  const _key = () => idbKeyFor(_boundId);
+  const _mismatch = () => _boundId !== DB.activeBoard();
+  let _lock = Promise.resolve();
+  function _serial(fn) {
+    const run = _lock.then(fn, fn);
+    _lock = run.catch(() => {});
+    return run;
+  }
   const FILE_NAME = 'kanbanjs-board.json';
   const DEBOUNCE  = 800;
   const POLL_MS   = 60000;
@@ -2004,10 +2014,12 @@ const AutoSave = (() => {
   let _state = 'idle';
   let _pending = null;
   let _flushing = false;
+  let _idle = Promise.resolve();
   let _dirty = false;
   let _gen = 0;
   let _onChange = null;
   let _mockStore = null;
+  const _mockFiles = {};
   let _mockBad = null;
   let _pollTimer = null;
 
@@ -2092,7 +2104,7 @@ const AutoSave = (() => {
 
   function _persist() {
     if (!_handle) return Promise.resolve();
-    return _store.set(IDB_KEY, { handle: _handle, lastWriteAt: _lastWriteAt })
+    return _store.set(_key(), { handle: _handle, lastWriteAt: _lastWriteAt })
       .catch(e => { console.warn('KanbanJS : handle de sauvegarde non persist\u00e9.', e); });
   }
 
@@ -2105,15 +2117,18 @@ const AutoSave = (() => {
   }
 
   async function checkExternal() {
-    if (!_handle || _state !== 'active' || _pending || _flushing) return false;
+    if (!_handle || _state !== 'active' || _pending || _flushing || _mismatch()) return false;
+    const gen = _gen;
+    const stale = () => gen !== _gen || _pending || _flushing || _state !== 'active' || _mismatch();
     if (!(await _externalNewer())) return false;
-    if (_pending || _flushing || _state !== 'active') return false;
+    if (stale()) return false;
     if (!(await _externalNewer())) return false;
     try {
       const file = await _handle.getFile();
       const text = await file.text();
       if (text === await DB.exportJSON()) return false;
     } catch (_) { return false; }
+    if (stale()) return false;
     _setPending('reload');
     return true;
   }
@@ -2153,9 +2168,14 @@ const AutoSave = (() => {
     DB.onSave(() => schedule());
     if (!available()) { _set('unsupported'); return; }
     _startPolling();
+    await _bind();
+  }
+
+  async function _bind() {
     const gen = ++_gen;
+    _boundId = DB.activeBoard();
     let rec = null;
-    try { rec = await _store.get(IDB_KEY); }
+    try { rec = await _store.get(_key()); }
     catch (_) { if (gen === _gen && !_handle) _set('error'); return; }
     if (gen !== _gen) return;
     if (!rec || !rec.handle) { _set('idle'); return; }
@@ -2168,11 +2188,14 @@ const AutoSave = (() => {
     else if (perm === 'granted' && await _externalNewer()) _setPending('reload');
   }
 
-  async function enable() {
+  const enable = () => _serial(_enable);
+  async function _enable() {
     if (!available()) { _set('unsupported'); return false; }
     let handle = null;
     try { handle = await window.showSaveFilePicker({ suggestedName: FILE_NAME, types: FILE_TYPES }); }
     catch (_) { return false; }
+    _gen++;
+    _boundId = DB.activeBoard();
     _handle = handle;
     _lastWriteAt = 0;
     _setPending(null);
@@ -2181,7 +2204,8 @@ const AutoSave = (() => {
     return await flush();
   }
 
-  async function attach(picked) {
+  const attach = picked => _serial(() => _attach(picked));
+  async function _attach(picked) {
     if (!picked) {
       if (typeof window.showOpenFilePicker !== 'function') return false;
       try { [picked] = await window.showOpenFilePicker({ types: FILE_TYPES, multiple: false }); }
@@ -2189,6 +2213,8 @@ const AutoSave = (() => {
     }
     const modified = await _readInto(picked);
     if (!modified) return false;
+    _gen++;
+    _boundId = DB.activeBoard();
     _handle = picked;
     _lastWriteAt = modified;
     _setPending(null);
@@ -2199,18 +2225,20 @@ const AutoSave = (() => {
     return true;
   }
 
-  async function disable() {
+  const disable = () => _serial(_disable);
+  async function _disable() {
     _gen++;
     clearTimeout(_timer);
     _handle = null;
     _lastWriteAt = 0;
     _dirty = false;
-    try { await _store.del(IDB_KEY); } catch (_) {}
+    try { await _store.del(_key()); } catch (_) {}
     _setPending(null);
     _set('idle');
   }
 
-  async function resume() {
+  const resume = () => _serial(_resume);
+  async function _resume() {
     if (!_handle) return false;
     const gen = _gen;
     let perm = 'denied';
@@ -2224,7 +2252,8 @@ const AutoSave = (() => {
     return true;
   }
 
-  async function restore() {
+  const restore = () => _serial(_restore);
+  async function _restore() {
     if (!_handle) return false;
     if (await _permission() !== 'granted') {
       let perm = 'denied';
@@ -2241,11 +2270,13 @@ const AutoSave = (() => {
   }
 
   async function flush() {
-    if (!_handle || _pending) return false;
+    if (!_handle || _pending || _mismatch()) return false;
     if (_flushing) { _dirty = true; return false; }
     clearTimeout(_timer);
     _dirty = false;
     _flushing = true;
+    let release;
+    _idle = new Promise(r => { release = r; });
     const gen = _gen;
     try {
       if (await _permission() !== 'granted') { if (gen === _gen) _set('paused'); return false; }
@@ -2264,12 +2295,13 @@ const AutoSave = (() => {
       return false;
     } finally {
       _flushing = false;
+      release();
       if (_dirty) schedule();
     }
   }
 
   function schedule() {
-    if (!_handle || _pending) return;
+    if (!_handle || _pending || _mismatch()) return;
     _dirty = true;
     clearTimeout(_timer);
     _timer = setTimeout(flush, DEBOUNCE);
@@ -2280,6 +2312,42 @@ const AutoSave = (() => {
     schedule();
   }
 
+  const switchBoard = doSwitch => _serial(() => _switchBoard(doSwitch));
+  async function _switchBoard(doSwitch) {
+    if (_state === 'unsupported') { await doSwitch(); return; }
+    for (let i = 0; i < 5 && _handle && !_pending && !_mismatch() && (_flushing || _dirty); i++) {
+      if (_flushing) { await _idle; continue; }
+      clearTimeout(_timer);
+      if (!(await flush()) && !_flushing) break;
+    }
+    clearTimeout(_timer);
+    _gen++;
+    _handle = null;
+    _lastWriteAt = 0;
+    _dirty = false;
+    _setPending(null);
+    try {
+      await doSwitch();
+    } finally {
+      await _bind();
+      await _catchUp();
+    }
+  }
+
+  async function _catchUp() {
+    if (!_handle || _state !== 'active' || _pending || _mismatch()) return;
+    const gen = _gen;
+    try {
+      const text = await (await _handle.getFile()).text();
+      if (gen === _gen && text !== await DB.exportJSON()) schedule();
+    } catch (_) {}
+  }
+
+  async function forget(id) {
+    if (id === DB.activeBoard()) return false;
+    try { await _store.del(idbKeyFor(id)); return true; } catch (_) { return false; }
+  }
+
   function refreshPending() {
     if (!_handle) return;
     if (DB.loadSource() === 'default') _setPending('restore');
@@ -2287,6 +2355,7 @@ const AutoSave = (() => {
 
   const api = {
     init, enable, attach, disable, resume, restore, flush, schedule, dismiss, refreshPending, checkExternal, available,
+    switchBoard, forget,
     capability, isBrave,
     fileName: () => (_handle && _handle.name) || '',
     status: () => _state,
@@ -2298,22 +2367,23 @@ const AutoSave = (() => {
 
   if (new URLSearchParams(location.search).has('test')) {
     api._test = {
-      inject(mode) {
+      inject(mode, name = 'mock.json', keep = false) {
         _gen++;
+        _boundId = DB.activeBoard();
         _dirty = false;
-        for (const k in _mem) delete _mem[k];
+        if (!keep) { for (const k in _mem) delete _mem[k]; }
         _store = _memStore;
-        _mockStore = { text: '', modified: 0 };
+        const file = _mockStore = _mockFiles[name] = { text: '', modified: 0 };
         _handle = {
-          name: 'mock.json',
+          name,
           queryPermission: async () => (mode === 'prompt' ? 'prompt' : 'granted'),
           requestPermission: async () => (mode === 'prompt' ? 'denied' : 'granted'),
-          getFile: async () => ({ lastModified: _mockStore.modified, text: async () => _mockStore.text }),
+          getFile: async () => ({ lastModified: file.modified, text: async () => file.text }),
           createWritable: async () => ({
-            write: async text => { _mockStore.text = text; },
+            write: async text => { file.text = text; },
             close: async () => {
               if (mode === 'slow') await new Promise(r => setTimeout(r, 1200));
-              _mockStore.modified = Date.now();
+              file.modified = Date.now();
             },
           }),
         };
@@ -2323,20 +2393,26 @@ const AutoSave = (() => {
         _setPending(null);
         return true;
       },
-      file() { return _mockStore ? _mockStore.text : null; },
-      setFile(text, modified) {
+      forceState(st) { _gen++; _handle = null; _state = st; _notify(); },
+      file(name) { const f = name ? _mockFiles[name] : _mockStore; return f ? f.text : null; },
+      stored(id) { return !!_mem[idbKeyFor(id)]; },
+      setFile(text, modified, name) {
         if (!_mockStore) _mockStore = { text: '', modified: 0 };
-        _mockStore.text = text;
-        _mockStore.modified = modified || Date.now();
+        const f = (name && _mockFiles[name]) || _mockStore;
+        f.text = text;
+        f.modified = modified || Date.now();
       },
-      attachWith(text) {
+      attachWith(text, delay = 0) {
         const bad = { text, modified: Date.now() };
         _mockBad = bad;
         return attach({
           name: 'mauvais.json',
           queryPermission: async () => 'granted',
           requestPermission: async () => 'granted',
-          getFile: async () => ({ lastModified: bad.modified, text: async () => bad.text }),
+          getFile: async () => {
+            if (delay) await new Promise(r => setTimeout(r, delay));
+            return { lastModified: bad.modified, text: async () => bad.text };
+          },
           createWritable: async () => ({
             write: async t => { bad.text = t; },
             close: async () => { bad.modified = Date.now(); },
@@ -5138,7 +5214,9 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     _syncing = true;
     try {
       _saveStack(UK, []); _saveStack(RK, []); _saveStack(UKS, []); _saveStack(RKS, []);
+      const before = DB.activeBoard();
       await DB.reload();
+      if (DB.activeBoard() !== before) await AutoSave.switchBoard(async () => {});
       AutoSave.refreshPending();
       if (_editingActive()) {
         _storageTimer = setTimeout(_syncFromStorage, 200);
@@ -5208,7 +5286,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     }
   }
 
-  return { init, _rebuild, dateKey, backupDue, autosaveUnsupportedMessage };
+  return { init, _rebuild, _syncFromStorage, dateKey, backupDue, autosaveUnsupportedMessage };
 })();
 
 App.init();
@@ -5244,14 +5322,18 @@ window.__testAPI = (() => {
         case 'corruptState':   localStorage.setItem('kanbanjs:state', '{ ceci n\u2019est pas du JSON'); break;
         case 'getBackup':      result = localStorage.getItem('kanbanjs:state.bak'); break;
         case 'corruptBackup':  localStorage.setItem('kanbanjs:state.bak', 'CORROMPU'); break;
-        case 'autoSaveMock':   result = AutoSave._test.inject(args.mode); break;
-        case 'autoSaveFile':   result = AutoSave._test.file(); break;
+        case 'autoSaveMock':   result = AutoSave._test.inject(args.mode, args.name, args.keep); break;
+        case 'autoSaveFile':   result = AutoSave._test.file(args.name); break;
+        case 'autoSaveStored': result = AutoSave._test.stored(args.id); break;
+        case 'autoSaveForget': result = await AutoSave.forget(args.id); break;
+        case 'autoSaveForceState': AutoSave._test.forceState(args.state); break;
+        case 'syncFromStorage': await App._syncFromStorage(); break;
         case 'autoSaveState':  result = AutoSave.status(); break;
         case 'autoSaveFlush':  result = await AutoSave.flush(); break;
         case 'autoSaveRestore': result = await AutoSave.restore(); break;
         case 'autoSaveResume':  result = await AutoSave.resume(); break;
-        case 'autoSaveSetFile': AutoSave._test.setFile(args.text, args.modified); break;
-        case 'autoSaveAttachWith': result = await AutoSave._test.attachWith(args.text); break;
+        case 'autoSaveSetFile': AutoSave._test.setFile(args.text, args.modified, args.name); break;
+        case 'autoSaveAttachWith': result = await AutoSave._test.attachWith(args.text, args.delay); break;
         case 'autoSaveBadFile': result = AutoSave._test.badFile(); break;
         case 'autoSaveDismiss': AutoSave.dismiss(); result = true; break;
         case 'autoSaveFlushAsync': AutoSave.flush(); result = true; break;
@@ -5290,7 +5372,7 @@ window.__testAPI = (() => {
         case 'dateKey':        result = App.dateKey(new Date(args.date)); break;
         case 'boardList':      result = await DB.listBoards(); break;
         case 'boardCreate':    result = await DB.createBoard(args.name); break;
-        case 'boardUse':       await DB.useBoard(args.id); await App._rebuild(); break;
+        case 'boardUse':       await AutoSave.switchBoard(() => DB.useBoard(args.id)); await App._rebuild(); break;
         case 'boardDelete':    result = await DB.deleteBoard(args.id); break;
         case 'boardMeta':      result = await DB.getBoardMeta(args.id); break;
         case 'boardSetMeta':   result = await DB.setBoardMeta(args.patch, args.id); break;

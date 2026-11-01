@@ -757,6 +757,176 @@ async function run() {
     } catch (_) {}
   }
 
+  // ── 32. Multiboard — fichier compagnon par board ────────────
+  let boardAS = null;
+  try {
+    await send('boardUse', { id: 'main' });
+    await send('autoSaveMock', { mode: 'granted', name: 'main.json' });
+    await send('autoSaveFlush');
+    assert('Fichier compagnon : le handle du board principal est rangé sous sa clé',
+      (await send('autoSaveStored', { id: 'main' })) === true);
+
+    boardAS = await send('boardCreate', { name: 'Équipe AS' });
+    const mLists = await send('getLists');
+    await send('createCard', { listId: mLists[0].id, text: 'avant bascule' });
+    await send('boardUse', { id: boardAS.id });
+    const mainFile1 = await send('autoSaveFile', { name: 'main.json' });
+    assert('Changement de board : l’écriture en attente part dans le fichier du board quitté',
+      mainFile1.includes('avant bascule') && !mainFile1.includes('Équipe AS'));
+    assert('Board sans fichier : sauvegarde inactive, aucun fichier attaché',
+      (await send('autoSaveState')) === 'idle' && (await send('autoSaveFileName')) === '');
+
+    await send('autoSaveMock', { mode: 'granted', name: 'b.json', keep: true });
+    const bL = await send('getLists');
+    await send('createCard', { listId: bL[0].id, text: 'carte B' });
+    await send('autoSaveFlush');
+    const bFile = await send('autoSaveFile', { name: 'b.json' });
+    assert('Board secondaire : son propre fichier reçoit son contenu',
+      bFile.includes('carte B') && bFile.includes('Équipe AS') && (await send('autoSaveStored', { id: boardAS.id })));
+
+    await send('boardUse', { id: 'main' });
+    assert('Retour sur le board principal : son fichier est réattaché',
+      (await send('autoSaveFileName')) === 'main.json' && (await send('autoSaveState')) === 'active');
+    assert('Le fichier du board principal ne contient pas les cartes du board B',
+      !(await send('autoSaveFile', { name: 'main.json' })).includes('carte B'));
+
+    await send('autoSaveMock', { mode: 'slow', name: 'slow.json', keep: true });
+    await send('createCard', { listId: mLists[0].id, text: 'pendant écriture' });
+    await send('autoSaveFlushAsync');
+    await send('createCard', { listId: mLists[0].id, text: 'après écriture' });
+    await send('boardUse', { id: boardAS.id }, 10000);
+    const slow = await send('autoSaveFile', { name: 'slow.json' });
+    assert('Changement pendant une écriture : le fichier quitté reçoit aussi l’édition faite pendant l’écriture',
+      slow.includes('après écriture'), slow.slice(0, 120));
+    const bFile2 = await send('autoSaveFile', { name: 'b.json' });
+    assert('Changement pendant une écriture : le fichier du board d’arrivée est intact',
+      !bFile2.includes('pendant écriture') && !bFile2.includes('après écriture'));
+
+    let unknownOk = false;
+    try { await send('boardUse', { id: '_inexistant' }); } catch (_) { unknownOk = true; }
+    assert('Changement refusé : le fichier du board courant reste attaché',
+      unknownOk && (await send('boardActive')) === boardAS.id && (await send('autoSaveFileName')) === 'b.json');
+
+    await send('boardUse', { id: 'main' });
+    assert('Oubli : le handle d’un board secondaire est supprimé',
+      (await send('autoSaveForget', { id: boardAS.id })) === true
+        && (await send('autoSaveStored', { id: boardAS.id })) === false);
+    assert('Oubli : refusé pour le board actif',
+      (await send('autoSaveForget', { id: 'main' })) === false && (await send('autoSaveStored', { id: 'main' })));
+
+    // Règle d'or au changement de board
+    await send('autoSaveMock', { mode: 'granted', name: 'main.json', keep: true });
+    await send('autoSaveFlush');
+    await send('autoSaveSetFile', { text: '{"externe":1}', modified: Date.now() + 60000 });
+    await send('autoSaveCheckExternal');
+    await send('createCard', { listId: mLists[0].id, text: 'pendant le bandeau' });
+    await send('boardUse', { id: boardAS.id });
+    assert('Bandeau en attente : changer de board n’écrit rien dans le fichier quitté',
+      (await send('autoSaveFile', { name: 'main.json' })) === '{"externe":1}');
+    await send('boardUse', { id: 'main' });
+    assert('Bandeau en attente : il réapparaît au retour sur le board',
+      (await send('autoSavePending')) === 'reload');
+    await send('autoSaveMock', { mode: 'granted', name: 'main.json', keep: true });
+    await send('autoSaveFlush');
+
+    // Rattrapage d'un fichier resté périmé
+    await send('boardUse', { id: boardAS.id });
+    await send('autoSaveMock', { mode: 'granted', name: 'b.json', keep: true });
+    await send('autoSaveFlush');
+    await send('autoSaveSetFile', { text: '{"perime":1}', modified: 1, name: 'b.json' });
+    await send('boardUse', { id: 'main' });
+    await send('boardUse', { id: boardAS.id });
+    await new Promise(r => setTimeout(r, 1100));
+    assert('Retour sur un board : un fichier resté périmé est rattrapé',
+      (await send('autoSaveFile', { name: 'b.json' })) === (await send('export')));
+
+    // Changements concurrents
+    await send('boardUse', { id: 'main' });
+    await Promise.all([send('boardUse', { id: boardAS.id }, 10000), send('boardUse', { id: 'main' }, 10000)]);
+    assert('Changements concurrents : fichier cohérent avec le board final',
+      (await send('boardActive')) === 'main' && (await send('autoSaveFileName')) === 'main.json');
+
+    // attach concurrent d'un changement
+    await send('boardUse', { id: boardAS.id });
+    const bExport = await send('export');
+    await send('boardUse', { id: 'main' });
+    const mainCountBefore = await send('cardCount');
+    await send('boardUse', { id: boardAS.id });
+    await Promise.all([send('autoSaveAttachWith', { text: bExport, delay: 300 }, 10000), send('boardUse', { id: 'main' }, 10000)]);
+    assert('attach concurrent d’un changement : rien n’est importé dans le board d’arrivée',
+      (await send('cardCount')) === mainCountBefore && (await send('autoSaveFileName')) === 'main.json');
+
+    // Édition pendant l'écriture finale du changement de board
+    await send('boardUse', { id: 'main' });
+    await send('autoSaveMock', { mode: 'slow', name: 'final.json', keep: true });
+    await send('createCard', { listId: mLists[0].id, text: 'avant écriture finale' });
+    const sw = send('boardUse', { id: boardAS.id }, 10000);
+    await new Promise(r => setTimeout(r, 300));
+    await send('createCard', { listId: mLists[0].id, text: 'pendant écriture finale' });
+    await sw;
+    assert('Édition pendant l’écriture finale : elle atteint aussi le fichier quitté',
+      (await send('autoSaveFile', { name: 'final.json' })).includes('pendant écriture finale'));
+    await send('boardUse', { id: 'main' }, 10000);
+    await send('autoSaveMock', { mode: 'granted', name: 'main.json', keep: true });
+    await send('autoSaveFlush');
+
+    // Garde-fou : un changement de board par DB.reload() seul n'écrit jamais dans le mauvais fichier
+    const y = await send('boardCreate', { name: 'Garde-fou' });
+    await send('boardUse', { id: y.id });
+    await send('autoSaveMock', { mode: 'granted', name: 'y.json', keep: true });
+    await send('autoSaveFlush');
+    const yBefore = await send('autoSaveFile', { name: 'y.json' });
+    const idxY = JSON.parse(await send('rawGet', { key: 'kanbanjs:boards' })).filter(b => b.id !== y.id);
+    await send('rawSet', { key: 'kanbanjs:boards', value: JSON.stringify(idxY) });
+    for (const sfx of ['', '.bak']) await send('rawRemove', { key: 'kanbanjs:state:' + y.id + sfx });
+    await send('reload');
+    const mlY = await send('getLists');
+    await send('createCard', { listId: mlY[0].id, text: 'sans resynchro' });
+    await send('autoSaveFlush');
+    assert('Garde-fou : sans resynchro, le fichier d’un autre board n’est jamais écrit',
+      (await send('autoSaveFile', { name: 'y.json' })) === yBefore);
+    await send('boardUse', { id: 'main' });
+    assert('Garde-fou : le handle du board principal n’est pas écrasé',
+      (await send('autoSaveFileName')) === 'main.json');
+    await send('autoSaveForget', { id: y.id });
+
+    // Board actif supprimé dans un autre onglet → synchro
+    const x = await send('boardCreate', { name: 'Supprimé ailleurs AS' });
+    await send('boardUse', { id: x.id });
+    await send('autoSaveMock', { mode: 'granted', name: 'x.json', keep: true });
+    await send('autoSaveFlush');
+    const xBefore = await send('autoSaveFile', { name: 'x.json' });
+    const idx = JSON.parse(await send('rawGet', { key: 'kanbanjs:boards' })).filter(b => b.id !== x.id);
+    await send('rawSet', { key: 'kanbanjs:boards', value: JSON.stringify(idx) });
+    for (const sfx of ['', '.bak']) await send('rawRemove', { key: 'kanbanjs:state:' + x.id + sfx });
+    await send('syncFromStorage');
+    const ml = await send('getLists');
+    await send('createCard', { listId: ml[0].id, text: 'après suppression distante' });
+    await send('autoSaveFlush');
+    assert('Board supprimé ailleurs : retour sur le board principal avec son propre fichier',
+      (await send('boardActive')) === 'main' && (await send('autoSaveFileName')) === 'main.json');
+    assert('Board supprimé ailleurs : le fichier du board disparu n’est jamais écrasé par le board principal',
+      (await send('autoSaveFile', { name: 'x.json' })) === xBefore);
+    assert('Board supprimé ailleurs : le handle du board principal n’est pas écrasé',
+      (await send('autoSaveFile', { name: 'main.json' })).includes('après suppression distante'));
+    await send('autoSaveForget', { id: x.id });
+
+    // Navigateur sans File System Access API
+    await send('autoSaveForceState', { state: 'unsupported' });
+    await send('boardUse', { id: boardAS.id });
+    assert('Navigateur non supporté : le changement de board fonctionne, état inchangé',
+      (await send('boardActive')) === boardAS.id && (await send('autoSaveState')) === 'unsupported');
+    await send('boardUse', { id: 'main' });
+    await send('autoSaveMock', { mode: 'granted', name: 'main.json', keep: true });
+  } catch (e) {
+    assert('Multiboard — fichier compagnon', false, e.message);
+  } finally {
+    try {
+      await send('boardUse', { id: 'main' }, 10000);
+      if (boardAS) await send('boardDelete', { id: boardAS.id });
+    } catch (_) {}
+  }
+
   // ── Résumé ──────────────────────────────────────────────────
   const total = pass + fail;
   const summary = document.createElement('div');
