@@ -30,7 +30,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Undo/redo 30 niveaux avec streak synchronisé, reconstruction DOM sans `location.reload()`
 - Parsing robuste du JSON IA (équilibrage bracketing, détection guillemets, strip code fences)
 - Gestion d'erreur complète : bannière `QuotaExceededError`, crash recovery dans `init()`, `AbortController` 60s
-- Tests : 243 tests via iframe/postMessage (`test.html`) — DB, fichier compagnon, multiboard, interface (DOM de l'iframe)
+- Tests : 251 tests via iframe/postMessage (`test.html`) — DB, fichier compagnon, multiboard, interface (DOM de l'iframe)
 
 **UX & design**
 - Raccourcis clavier vim-like complets : navigation h/l/j/k, actions carte/liste, recherche `Ctrl+K`, undo/redo
@@ -115,7 +115,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Appel POST à l'API avec format spécifique par fournisseur
 - Prompt système (v2, 2026-11-01) : 5 à 12 micro-actions centrées sur les 15-20 premières minutes, première action < 30 s sans décision, « Décomposer la suite » en dernier si la tâche déborde, un exemple d'ancrage, règle anti-injection
 - Parsing robuste de la réponse JSON (équilibrage des crochets, détection des guillemets, strip code fences)
-- Résultat : liste « IA · <tâche> » (tronquée à 40 car.) créée en position 0 du board actif ; relancer **la même tâche** remplace sa liste, une autre tâche crée une nouvelle liste. Garde-fou côté app : 12 items max, numérotation et doublons retirés. Ignoré si le board a changé pendant la requête
+- Résultat : liste « IA · <tâche> » (tronquée à 40 car.) créée en position 0 du board actif ; relancer **la même tâche** remplace sa liste **seulement si elle est intacte** (`list.aiTask` = tâche complète, `list.aiCards` = textes générés, ni note ni tag), sinon nouvelle liste. Garde-fou côté app (`cleanAITasks`) : 12 items max en gardant « Décomposer la suite » en dernier, numérotation/puces et doublons retirés. Gemini : repli automatique sans `systemInstruction` si le modèle la refuse (Gemma). Ignoré si le board a changé pendant la requête
 - Panneau de debug toggleable (logs requête/réponse/parsing)
 - **Templates** : 12 templates de corvées universelles intégrés, matching fuzzy sur le texte saisi dans le textarea (💡 "Template suggéré"). Zéro API requise.
 

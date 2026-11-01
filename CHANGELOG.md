@@ -6,10 +6,16 @@ Historique des versions, de la plus récente à la plus ancienne. Le contexte de
 
 - **Moins de cartes, mieux ciblées** : 5 à 12 micro-actions centrées sur les 15 à 20 premières minutes (au lieu de 6 à 35 pour toute la tâche — un mur de 35 cartes recréait le blocage que l'outil doit casser). Pour une grosse tâche, la dernière carte est « Décomposer la suite » : on décompose au fur et à mesure.
 - **Première action triviale** : moins de 30 secondes, physique, sans décision. Tâche floue → une action pour préciser le résultat attendu. Pas de numérotation, pas de doublon. Un exemple d'ancrage (utile aux petits modèles locaux).
-- **Tâche dans le message utilisateur** : le prompt système est désormais fixe (mis en cache par les fournisseurs) et la saisie, balisée `<tache>…</tache>`, ne peut plus se faire passer pour une consigne. Gemini reçoit enfin un vrai prompt système (`systemInstruction`).
+- **Tâche dans le message utilisateur** : le prompt système est désormais fixe et la saisie, balisée `<tache>…</tache>`, ne peut plus se faire passer pour une consigne. Gemini reçoit enfin un vrai prompt système (`systemInstruction`).
 - **Bug corrigé** : la tâche était insérée par `String.replace`, qui interprète `$&`, `` $` `` et `$'` — une saisie comme « Payer 50 $& de frais » corrompait le prompt.
 - **Liste nommée d'après la tâche** : « IA · <tâche> » au lieu de « IA (1234 tokens) ». Relancer la même tâche remplace sa liste ; une autre tâche crée une nouvelle liste au lieu d'écraser la précédente. Garde-fou côté app : 12 items au plus, numérotation et doublons retirés.
-- **Tests** : 234 → 243 (requête réellement envoyée pour les 4 fournisseurs, `$&` intact, plafond, titre, remplacement), chaque changement validé par mutation inverse.
+- **Correctifs issus d'une relecture en contexte neuf** :
+  - **Remplacement d'une liste IA** : comparé sur la tâche complète enregistrée sur la liste (`aiTask`), et seulement si la liste est **intacte** (`aiCards` identiques, ni note ni tag). Avant : deux tâches au même début (titre tronqué identique) s'écrasaient, et relancer une tâche effaçait les cartes retouchées.
+  - **Gemma et anciens modèles Gemini** (`Developer instruction is not enabled`) : nouvel essai automatique avec le prompt dans le message — sinon régression par rapport à la v1.2.0.
+  - **Plafond à 12** : « Décomposer la suite » est conservée en dernière position quand un modèle déborde.
+  - **Message utilisateur** : la relance « Réponds uniquement avec le tableau JSON » est rétablie hors des balises (les petits modèles suivent surtout le dernier message) ; `<tache>`/`</tache>` retirés de la saisie.
+  - **Nettoyage** : puces et numérotations plus variées (`–`, `—`, `→`, `1 -`, `1. -`, gras), sans toucher « 2 cuillères », « 1.5 kg », « 3D », « -5 °C » ; doublons comparés sans casse ni différence d'apostrophe ; titre tronqué sans couper un emoji ; délai dépassé affiché avec sa vraie durée (300 s pour Ollama).
+- **Tests** : 234 → 251 (requête réellement envoyée pour les 4 fournisseurs, `$&` intact, repli Gemma, plafond, nettoyage, titre, remplacement), chaque changement validé par mutation inverse.
 - **Service worker** : cache `kanbanjs-v7` → `v8`. `VERSION` 1.2.1.
 
 ## 2026-11-01 — Multiboard et suivi de projet (v1.2.0)
