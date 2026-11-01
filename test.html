@@ -1329,6 +1329,166 @@ async function run() {
     } catch (_) {}
   }
 
+  // ── 37. Suivi de projet : journal daté et projets non suivis ──
+  let boardS = null;
+  try {
+    const d = frame.contentDocument;
+    const w = frame.contentWindow;
+    const tick = (ms = 120) => new Promise(r => setTimeout(r, ms));
+    const key = (target, k) => target.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    const today = await send('dateKey', { date: Date.now() });
+    const head = '### ' + today;
+
+    boardS = await send('appCreateBoard', { name: 'Suivi S' });
+    await send('appSwitch', { id: boardS.id });
+    const sl = await send('getLists');
+    const c1 = await send('createCard', { listId: sl[0].id, text: 'Projet sans note' });
+    const c2 = await send('createCard', { listId: sl[0].id, text: 'Projet avec note' });
+    await send('updateCardNotes', { id: c2.id, notes: '### 2026-01-01\n\nAncien point' });
+    await send('rebuild');
+    const cardEl = id => d.querySelector('#board .card[data-id="' + id + '"]');
+    const notesOf = id => cardEl(id).querySelector('.card-notes');
+    const blur = id => notesOf(id).dispatchEvent(new w.Event('blur'));
+
+    cardEl(c1.id).click(); await tick();
+    key(d, 'i'); await tick();
+    assert('Journal (i) : ouvre la note avec l’entête du jour',
+      notesOf(c1.id).classList.contains('open') && notesOf(c1.id).value.startsWith(head + '\n'), notesOf(c1.id).value);
+    notesOf(c1.id).value = notesOf(c1.id).value.replace(head + '\n', head + '\nPremier point');
+    blur(c1.id); await tick(200);
+    const saved1 = (await send('getBoardCards')).find(c => c.id === c1.id).notes;
+    assert('Journal : entrée enregistrée', saved1.startsWith(head + '\nPremier point'), saved1);
+    const jBtn = id => cardEl(id).querySelector('.card-actions .btn-icon[aria-label^="Ajouter une entrée"]');
+    jBtn(c1.id).click(); await tick();
+    assert('Journal : pas de doublon le même jour (entrée existante → curseur dessous)',
+      notesOf(c1.id).value.split(head).length === 2 && notesOf(c1.id).selectionStart === head.length + 1, notesOf(c1.id).value);
+    blur(c1.id); await tick(200);
+
+    await send('rebuild');
+    cardEl(c2.id).querySelector('.card-actions .btn-icon[aria-label^="Ajouter une entrée"]').click();
+    await tick();
+    const v2 = notesOf(c2.id).value;
+    assert('Journal (bouton 📅) : nouvelle entrée en haut, historique conservé en dessous',
+      v2.startsWith(head + '\n') && v2.indexOf('### 2026-01-01') > v2.indexOf(head) && v2.includes('Ancien point'), v2);
+    assert('Journal : curseur placé sous l’entête', notesOf(c2.id).selectionStart === head.length + 1, notesOf(c2.id).selectionStart);
+    blur(c2.id); await tick(200);
+
+    const old = new Date(Date.now() - 20 * 86400000).toISOString();
+    const recent = new Date(Date.now() - 5 * 86400000).toISOString();
+    const exp = JSON.parse(await send('export'));
+    const st = exp.state;
+    st.cards = [
+      { id: '_s1', listId: sl[0].id, text: 'Oublié', position: 0, notes: 'x', tags: [], doneAt: null, notesUpdatedAt: old },
+      { id: '_s2', listId: sl[0].id, text: 'Récent', position: 1, notes: 'x', tags: [], doneAt: null, notesUpdatedAt: recent },
+      { id: '_s3', listId: sl[0].id, text: 'Ancienne carte', position: 2, notes: '', tags: [], doneAt: null },
+      { id: '_s4', listId: sl[2].id, text: 'Terminé', position: 0, notes: 'x', tags: [], doneAt: old, notesUpdatedAt: old },
+    ];
+    await send('import', { json: JSON.stringify(exp) });
+    await tick();
+    const stale = id => cardEl(id).classList.contains('card-stale');
+    assert('Non-suivi : badge au-delà du seuil (14 j)',
+      stale('_s1') && cardEl('_s1').querySelector('.card-stale-badge').textContent.includes('20 j'));
+    assert('Non-suivi : rien sous le seuil, rien sans date, rien en liste terminée',
+      !stale('_s2') && !stale('_s3') && cardEl('_s4').classList.contains('card-done')
+        && w.getComputedStyle(cardEl('_s4').querySelector('.card-stale-badge')).display === 'none');
+
+    await send('appSetMeta', { patch: { staleDays: 3 } });
+    await tick();
+    assert('Non-suivi : changer le seuil du board actif le réapplique aussitôt (3 j → la carte de 5 j est signalée)', stale('_s2'));
+    await send('appSetMeta', { patch: { staleDays: 14 } });
+    await tick();
+    const realNow = w.Date.now;
+    w.Date.now = () => realNow.call(w.Date) + 10 * 86400000;
+    d.dispatchEvent(new w.Event('visibilitychange'));
+    await tick();
+    w.Date.now = realNow;
+    assert('Non-suivi : recalculé au retour sur l’onglet (le temps passe)', stale('_s2'));
+    await send('rebuild');
+
+    const undoBefore = await send('undoSize');
+    cardEl('_s1').click(); await tick();
+    key(d, 'i'); await tick();
+    notesOf('_s1').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    blur('_s1'); await tick(200);
+    assert('Journal ouvert puis refermé (Échap) sans rien écrire : note inchangée, badge conservé',
+      stale('_s1') && (await send('getBoardCards')).find(c => c.id === '_s1').notes === 'x');
+    assert('Journal refermé sans rien écrire : aucun instantané undo parasite',
+      (await send('undoSize')) === undoBefore, [undoBefore, await send('undoSize')]);
+
+    const dbCard = async id => (await send('getBoardCards')).find(c => c.id === id);
+    const userHead = head + '\n\n\nContenu réel';
+    for (const [label, notes] of [['commençant par l’entête du jour', userHead], ['réduite à l’entête du jour', head], ['commençant par un saut de ligne', '\nfoo']]) {
+      await send('updateCardNotes', { id: '_s2', notes });
+      await send('setNotesUpdatedAt', { id: '_s2', iso: old });
+      await send('rebuild');
+      cardEl('_s2').click(); await tick();
+      key(d, 'i'); await tick();
+      blur('_s2'); await tick(200);
+      const after = await dbCard('_s2');
+      assert('Journal sans saisie, note ' + label + ' : contenu et date intacts',
+        after.notes === notes && after.notesUpdatedAt === old, JSON.stringify(after.notes));
+    }
+
+    await send('updateCardNotes', { id: '_s2', notes: 'a\r\nb' });
+    await send('setNotesUpdatedAt', { id: '_s2', iso: old });
+    await send('rebuild');
+    cardEl('_s2').querySelector('.card-actions .btn-icon').click(); await tick();
+    blur('_s2'); await tick(200);
+    assert('Note importée en \\r\\n : ouvrir puis fermer ne compte pas comme un suivi',
+      (await dbCard('_s2')).notesUpdatedAt === old);
+
+    const dupSrc = cardEl('_s2');
+    await send('updateCardNotes', { id: '_s2', notes: 'Note à dupliquer' });
+    await send('rebuild');
+    cardEl('_s2').click(); await tick();
+    key(d, 'c'); await tick(250);
+    const dup = d.querySelector('#board .card.card-selected');
+    const dupId = dup && dup.dataset.id;
+    assert('Duplication : la copie affiche la note d’origine', dupId && dupId !== '_s2' && notesOf(dupId).value === 'Note à dupliquer');
+    key(d, 'i'); await tick();
+    blur(dupId); await tick(200);
+    assert('Duplication puis journal sans saisie : la note de la copie n’est pas effacée',
+      (await dbCard(dupId)).notes === 'Note à dupliquer', (await dbCard(dupId)).notes);
+
+    cardEl('_s1').click(); await tick();
+    key(d, 'x'); await tick(250);
+    key(d, 'p'); await tick(300);
+    const moved = [...d.querySelectorAll('#board .card')].find(e => e.querySelector('.card-text').textContent === 'Oublié');
+    assert('Couper/coller : la date de suivi est conservée (badge toujours là)',
+      !!moved && moved.classList.contains('card-stale'));
+    moved.click(); await tick();
+    key(d, 'y'); await tick();
+    key(d, 'p'); await tick(300);
+    const copies = [...d.querySelectorAll('#board .card')].filter(e => e.querySelector('.card-text').textContent === 'Oublié');
+    assert('Copier/coller : la copie repart d’une date neuve', copies.length === 2 && copies.filter(e => e.classList.contains('card-stale')).length === 1);
+
+    const movedId = moved.dataset.id;
+    cardEl(movedId).querySelector('.card-actions .btn-icon').click(); await tick();
+    notesOf(movedId).value = 'x mis à jour';
+    blur(movedId); await tick(200);
+    assert('Non-suivi : mettre la note à jour retire le badge', !stale(movedId));
+
+    await send('setNotesUpdatedAt', { id: '_s3', iso: old });
+    await send('rebuild');
+    assert('Non-suivi : carte sans note → libellé « Aucune note depuis… »',
+      stale('_s3') && cardEl('_s3').querySelector('.card-stale-badge').title.startsWith('Aucune note'));
+
+    await send('appSetMeta', { patch: { staleDays: 0 } });
+    await tick();
+    assert('Non-suivi : seuil 0 → désactivé', !d.querySelector('#board .card.card-stale'));
+
+    await send('appSwitch', { id: 'main' });
+    assert('Board principal : suivi désactivé par défaut', !d.querySelector('#board .card.card-stale'));
+    assert('Aide clavier : i documenté', d.querySelector('.cheatsheet').textContent.includes('journal'));
+  } catch (e) {
+    assert('Suivi de projet', false, e.message);
+  } finally {
+    try {
+      await send('appSwitch', { id: 'main' });
+      if (boardS) await send('appDeleteBoard', { id: boardS.id });
+    } catch (_) {}
+  }
+
   // ── Résumé ──────────────────────────────────────────────────
   const total = pass + fail;
   const summary = document.createElement('div');

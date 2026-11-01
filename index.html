@@ -613,6 +613,20 @@
     .card:hover .card-actions { display: flex; }
     .card-actions .btn-icon { width: 22px; height: 22px; font-size: 13px; }
 
+    .card.card-stale:not(.card-done) { opacity: .72; }
+    .card.card-stale:not(.card-done):hover, .card.card-stale.card-selected { opacity: 1; }
+    .card-stale-badge {
+      display: none;
+      align-self: flex-start;
+      margin-top: 4px;
+      font-size: 11px;
+      color: var(--text-dim);
+      background: var(--surface-3);
+      border-radius: 10px;
+      padding: 1px 7px;
+    }
+    .card.card-stale:not(.card-done) .card-stale-badge { display: inline-block; }
+
     .card.has-notes::after {
       content: '';
       position: absolute;
@@ -1934,10 +1948,16 @@ const DB = (() => {
     async updateCardNotes(id, notes) {
       const c = _state.cards.find(c => c.id === id);
       if (c) {
-        if (c.notes !== notes) c.notesUpdatedAt = new Date().toISOString();
+        const norm = v => String(v || '').replace(/\r\n?/g, '\n');
+        if (norm(c.notes) !== norm(notes)) c.notesUpdatedAt = new Date().toISOString();
         c.notes = notes;
         _save();
       }
+      return c ? _clone(c) : null;
+    },
+    async setCardNotesUpdatedAt(id, iso) {
+      const c = _state.cards.find(c => c.id === id);
+      if (c && typeof iso === 'string' && Number.isFinite(Date.parse(iso))) { c.notesUpdatedAt = iso; _save(); }
       return c ? _clone(c) : null;
     },
     async updateCardTags(id, tags) {
@@ -2802,7 +2822,8 @@ const App = (() => {
   function autoResize(ta) {
     if (!ta.offsetParent) return; // encore display:none
     ta.style.height = 'auto';
-    ta.style.height = Math.max(ta.scrollHeight, ta.rows ? ta.rows * 20 : 28) + 'px';
+    const borders = ta.offsetHeight - ta.clientHeight;
+    ta.style.height = Math.max(ta.scrollHeight + borders, ta.rows ? ta.rows * 20 : 28) + 'px';
   }
 
   function dateKey(date) {
@@ -3161,7 +3182,7 @@ const App = (() => {
     const notesEl = el.querySelector('.card-notes');
     let tags = [];
     try { tags = JSON.parse(el.dataset.tags || '[]'); } catch (_) {}
-    return { text: textEl ? textEl.textContent : '', notes: notesEl ? notesEl.value : '', tags };
+    return { text: textEl ? textEl.textContent : '', notes: notesEl ? notesEl.value : '', tags, notesUpdatedAt: el.dataset.notesUpdatedAt || null };
   }
 
   function extractListData(el) {
@@ -3300,6 +3321,15 @@ const App = (() => {
   function _redoSize() { return _stackBoard === DB.activeBoard() ? _loadStack(RK).length : 0; }
 
   // ── CARD ─────────────────────────────────────────────────
+  let _staleDays = 0;
+  function staleDaysOf(card) {
+    if (!_staleDays || !card.notesUpdatedAt) return null;
+    const t = Date.parse(card.notesUpdatedAt);
+    if (!Number.isFinite(t)) return null;
+    const days = Math.floor((Date.now() - t) / 86400000);
+    return days >= _staleDays ? days : null;
+  }
+
   function buildCard(card, done) {
     const wrap = make('div', 'card');
     if (done) wrap.classList.add('card-done');
@@ -3326,7 +3356,25 @@ const App = (() => {
     delBtn.title       = 'Supprimer';
     delBtn.setAttribute('aria-label', 'Supprimer');
     delBtn.textContent = '\u2715';
-    actionsEl.append(notesBtn, delBtn);
+    const journalBtn = make('button', 'btn-icon');
+    journalBtn.title = 'Entr\u00e9e de journal dat\u00e9e (i)';
+    journalBtn.setAttribute('aria-label', 'Ajouter une entr\u00e9e de journal dat\u00e9e');
+    journalBtn.textContent = '\u{1F4C5}';
+    actionsEl.append(notesBtn, journalBtn, delBtn);
+
+    const staleEl = make('span', 'card-stale-badge');
+    function refreshStale() {
+      if (card.notesUpdatedAt) wrap.dataset.notesUpdatedAt = card.notesUpdatedAt;
+      const days = staleDaysOf(card);
+      wrap.classList.toggle('card-stale', days !== null);
+      staleEl.textContent = days !== null ? '\u23F3 ' + days + ' j' : '';
+      const plural = days > 1 ? 's' : '';
+      staleEl.title = days === null ? ''
+        : card.notes ? 'Note non mise \u00e0 jour depuis ' + days + ' jour' + plural
+        : 'Aucune note depuis ' + days + ' jour' + plural;
+    }
+    refreshStale();
+    wrap._refreshStale = refreshStale;
 
     // Notes
     const notesEl = make('textarea', 'card-notes');
@@ -3398,7 +3446,7 @@ const App = (() => {
     cancelBtn.textContent = 'Annuler';
     editorActions.append(saveBtn, cancelBtn);
 
-    wrap.append(textEl, doneAtEl, notesEl, notesPreview, tagsEl, actionsEl, editor, editorActions);
+    wrap.append(textEl, doneAtEl, staleEl, notesEl, notesPreview, tagsEl, actionsEl, editor, editorActions);
 
     function enterEdit() {
       wrap.classList.add('editing');
@@ -3461,12 +3509,43 @@ const App = (() => {
       }
     }
 
+    let _journal = null;
+
     async function saveNotes() {
+      if (_journal && notesEl.value === _journal.inserted) notesEl.value = _journal.original;
+      _journal = null;
       const notes = notesEl.value;
-      await mutate(() => DB.updateCardNotes(card.id, notes));
-      card.notes = notes;
+      if (notes === (card.notes || '')) return;
+      const updated = await mutate(() => DB.updateCardNotes(card.id, notes));
+      card.notes = updated ? updated.notes : notes;
+      if (updated && updated.notesUpdatedAt) card.notesUpdatedAt = updated.notesUpdatedAt;
       wrap.classList.toggle('has-notes', !!notes);
+      refreshStale();
     }
+
+    function insertJournalEntry() {
+      const head = '### ' + dateKey(new Date());
+      openNotesEdit();
+      const v = notesEl.value;
+      const lines = v.split('\n');
+      const at = lines.findIndex(l => l.trim() === head);
+      let pos;
+      if (at >= 0) {
+        pos = lines.slice(0, at + 1).join('\n').length + 1;
+        if (pos > v.length) {
+          notesEl.value = v + '\n';
+          pos = notesEl.value.length;
+          _journal = { original: v, inserted: notesEl.value };
+        }
+      } else {
+        notesEl.value = head + '\n\n' + (v ? '\n' + v.replace(/^\n+/, '') : '');
+        pos = head.length + 1;
+        _journal = { original: v, inserted: notesEl.value };
+      }
+      notesEl.setSelectionRange(pos, pos);
+      autoResize(notesEl);
+    }
+    wrap._journal = insertJournalEntry;
 
     editor.addEventListener('blur',    () => saveEdit());
     editor.addEventListener('input',   () => autoResize(editor));
@@ -3476,6 +3555,8 @@ const App = (() => {
     });
     wrap.addEventListener('dblclick', e => { if (!e.target.closest('button, textarea')) enterEdit(); });
     notesBtn.addEventListener('click',  e => { e.stopPropagation(); toggleNotes(); });
+    journalBtn.addEventListener('mousedown', e => e.preventDefault());
+    journalBtn.addEventListener('click', e => { e.stopPropagation(); insertJournalEntry(); });
     notesEl.addEventListener('blur',    () => saveNotes());
     notesEl.addEventListener('input',   () => autoResize(notesEl));
     notesEl.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); saveNotes(); openNotesPreview(); } });
@@ -4752,9 +4833,9 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
   const Clipboard = {
     _data: null,
     copyCard(data) { this._data = { type: 'card', text: data.text, notes: data.notes, tags: data.tags }; },
-    cutCard(data)  { this._data = { type: 'card', text: data.text, notes: data.notes, tags: data.tags }; },
+    cutCard(data)  { this._data = { type: 'card', text: data.text, notes: data.notes, tags: data.tags, keepDate: data.notesUpdatedAt }; },
     copyList(data) { this._data = { type: 'list', title: data.title, cards: data.cards }; },
-    cutList(data)  { this._data = { type: 'list', title: data.title, cards: data.cards }; },
+    cutList(data)  { this._data = { type: 'list', title: data.title, cards: data.cards.map(c => ({ ...c, keepDate: c.notesUpdatedAt })) }; },
     paste()        { return this._data; },
     clear()        { this._data = null; },
     isEmpty()      { return !this._data; },
@@ -4907,6 +4988,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
         let c = await DB.createCard(listId, data.text);
         if (data.notes) c = await DB.updateCardNotes(c.id, data.notes);
         if (data.tags && data.tags.length) c = await DB.updateCardTags(c.id, data.tags);
+        if (data.keepDate) c = await DB.setCardNotesUpdatedAt(c.id, data.keepDate);
         return c;
       });
       const cardsEl = _selList.querySelector('.cards');
@@ -4927,6 +5009,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
           const card = await DB.createCard(l.id, c.text);
           if (c.notes) await DB.updateCardNotes(card.id, c.notes);
           if (c.tags && c.tags.length) await DB.updateCardTags(card.id, c.tags);
+          if (c.keepDate) await DB.setCardNotesUpdatedAt(card.id, c.keepDate);
         }
         return l;
       }));
@@ -4987,9 +5070,9 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     const listEl = _selCard.closest('.list');
     const done = listEl && listEl.dataset.done === 'true';
     const card = await mutate(async () => {
-      const c = await DB.createCard(listId, data.text);
-      if (data.notes) await DB.updateCardNotes(c.id, data.notes);
-      if (data.tags && data.tags.length) await DB.updateCardTags(c.id, data.tags);
+      let c = await DB.createCard(listId, data.text);
+      if (data.notes) c = await DB.updateCardNotes(c.id, data.notes);
+      if (data.tags && data.tags.length) c = await DB.updateCardTags(c.id, data.tags);
       return c;
     });
     const cardEl = buildCard(card, done);
@@ -5014,6 +5097,16 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     if (!_selCard || !_selCard.isConnected) return;
     const btn = _selCard.querySelector('.card-actions .btn-icon:not(.danger)');
     if (btn) btn.click();
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    boardEl.querySelectorAll('.card').forEach(w => { if (w._refreshStale) w._refreshStale(); });
+  });
+
+  function _journalCard() {
+    if (!_selCard || !_selCard.isConnected || !_selCard._journal) return;
+    _selCard._journal();
   }
 
   function _tagCard() {
@@ -5074,6 +5167,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     x:      { fn: cutCard,        when: () => _selCard && _selCard.isConnected && !_inInput() },
     c:      { fn: duplicateCard,  when: () => _selCard && _selCard.isConnected && !_inInput() },
     t:      { fn: _tagCard,       when: () => _selCard && _selCard.isConnected && !_inInput() },
+    i:      { fn: _journalCard,   when: () => _selCard && _selCard.isConnected && !_inInput() },
     y:      { fn: copyCard,     when: () => _selCard && _selCard.isConnected && !_inInput() },
     u:      { fn: _undo,        when: () => _undoSize() && !_inInput() },
     p:      { fn: _paste,       when: () => _selList && _selList.isConnected && !Clipboard.isEmpty() && Clipboard.type() === 'card' && !_inInput() },
@@ -5150,6 +5244,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       [['E'],     'Plier/D\u00E9plier toutes les notes'],
       [['c'],     'Dupliquer'],
       [['t'],     'Ajouter un tag'],
+      [['i'],     'Entr\u00e9e de journal dat\u00e9e (note)'],
       [['x'],     'Couper'],
       [['y'],     'Copier'],
       [['p'],     'Coller'],
@@ -5454,7 +5549,10 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     const before = await DB.getBoardMeta(id);
     const after = await DB.setBoardMeta(patch, id);
     if (before.streak !== after.streak) _neutralizeStreak(id);
-    if (id === DB.activeBoard()) await refreshHeaderInfo();
+    if (id === DB.activeBoard()) {
+      if (before.staleDays !== after.staleDays) await _rebuild();
+      else await refreshHeaderInfo();
+    }
     return after;
   }
 
@@ -5661,7 +5759,6 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
         try { await setBoardMeta({ staleDays: n }, b.id); }
         catch (_) { await gone(); return; }
         b.staleDays = n;
-        if (b.id === DB.activeBoard()) await _rebuild();
         flashMessage(msg, 'Enregistr\u00e9.', 'success', 2000);
       });
 
@@ -5689,6 +5786,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
   // ── REBUILD ────────────────────────────────────────────────
   async function _rebuild() {
+    _staleDays = (await DB.getBoardMeta()).staleDays;
     const boardData = await DB.getBoard();
     boardNameInput.value = boardData.name;
     document.title = `KanbanJS \u00b7 ${boardData.name}`;
@@ -5857,6 +5955,7 @@ window.__testAPI = (() => {
         case 'moveCard':       await DB.moveCard(args.cardId, args.toListId, args.newPos); break;
         case 'updateCardNotes': result = await DB.updateCardNotes(args.id, args.notes); break;
         case 'updateCardTags': result = await DB.updateCardTags(args.id, args.tags); break;
+        case 'setNotesUpdatedAt': result = await DB.setCardNotesUpdatedAt(args.id, args.iso); break;
         case 'domCardOrder': {
           const listEl = document.querySelector('.list[data-id="' + args.listId + '"] .cards');
           result = listEl ? [...listEl.querySelectorAll('.card-text')].map(e => e.textContent) : [];
