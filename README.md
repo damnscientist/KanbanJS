@@ -90,6 +90,8 @@ python3 -m http.server 8000
 
 Puis ouvrez [http://localhost:8000/test.html](http://localhost:8000/test.html) (76 tests DB via iframe + postMessage).
 
+L'historique des versions est dans [CHANGELOG.md](CHANGELOG.md).
+
 ## À propos du développement
 
 Ce logiciel a été intégralement développé avec l'assistance d'un agent d'IA (OpenCode / Claude). Toutes les décisions architecturales, le design, et les révisions ont été pilotés par un humain. Le code est libre, ouvert, et fait pour durer.
