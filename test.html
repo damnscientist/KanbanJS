@@ -1781,6 +1781,17 @@ async function run() {
       assert('OpenAI : prompt système fixe, tâche dans le message utilisateur (intacte malgré $&)',
         !sent.body.messages[0].content.includes('Payer') && sent.body.messages[0].content.includes('Décomposer la suite')
           && sent.body.messages[1].role === 'user' && isUser(sent.body.messages[1].content), sent.body.messages[1].content);
+      const sys = sent.body.messages[0].content;
+      const aiNext = await send('aiNext');
+      const examples = (sys.match(/^\[".*"\]$/gm) || []).map(e => { try { return JSON.parse(e); } catch (_) { return null; } });
+      assert('Prompt envoyé : règles révisées présentes',
+        ['« ' + aiNext + ' » comprise', 'exactement « ' + aiNext + ' » (toujours en français)', 'jamais la première', 'seul site officiel évident', 'n\u2019écris jamais le caractère "'.replace('\u2019', "'"), 'dans la langue de la tâche', '<exemples>']
+          .every(k => sys.includes(k)) && !sys.includes('Ouvrir l’ordinateur') && !sys.includes("Ouvrir l'ordinateur"));
+      assert('Prompt envoyé : exemples en JSON valide, dans les limites, l’un avec « Décomposer la suite » et l’autre sans',
+        examples.length === 2 && examples.every(e => e && e.length >= 5 && e.length <= 12 && new Set(e).size === e.length
+          && e.every(t => t.length < 80 && !/^\d/.test(t) && !t.includes('"')))
+          && examples[0][examples[0].length - 1] === aiNext && !examples[1].includes(aiNext), examples.map(e => e && e.length));
+
       setCfg('ollama'); await run(task);
       assert('Ollama : même structure', isUser(sent.body.messages[1].content) && !sent.body.messages[0].content.includes('Payer'));
       setCfg('anthropic'); await run(task);

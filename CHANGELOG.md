@@ -15,7 +15,8 @@ Historique des versions, de la plus récente à la plus ancienne. Le contexte de
   - **Plafond à 12** : « Décomposer la suite » est conservée en dernière position quand un modèle déborde.
   - **Message utilisateur** : la relance « Réponds uniquement avec le tableau JSON » est rétablie hors des balises (les petits modèles suivent surtout le dernier message) ; `<tache>`/`</tache>` retirés de la saisie.
   - **Nettoyage** : puces et numérotations plus variées (`–`, `—`, `→`, `1 -`, `1. -`, gras), sans toucher « 2 cuillères », « 1.5 kg », « 3D », « -5 °C » ; doublons comparés sans casse ni différence d'apostrophe ; titre tronqué sans couper un emoji ; délai dépassé affiché avec sa vraie durée (300 s pour Ollama).
-- **Tests** : 234 → 251 (requête réellement envoyée pour les 4 fournisseurs, `$&` intact, repli Gemma, plafond, nettoyage, titre, remplacement), chaque changement validé par mutation inverse.
+- **Texte du prompt affiné après deux relectures** : règles « Décomposer la suite » (comprise dans les 12 ; seulement si la tâche entière dépasse 20 minutes, toujours en français pour que l'app la reconnaisse ; sinon la dernière action est le geste concret qui achève la tâche), première action « Ouvrir un nouvel onglet » au lieu de « Ouvrir l'ordinateur » (absurde sur desktop), pas de site ni de bouton inventé, clarification d'une tâche floue en 2ᵉ ou 3ᵉ position, jamais de `"` dans une action (JSON invalide sur les petits modèles), actions dans la langue de la tâche, et un second exemple court sans « Décomposer la suite ».
+- **Tests** : 234 → 253 (requête réellement envoyée pour les 4 fournisseurs, `$&` intact, repli Gemma, plafond, nettoyage, titre, remplacement), chaque changement validé par mutation inverse.
 - **Service worker** : cache `kanbanjs-v7` → `v8`. `VERSION` 1.2.1.
 
 ## 2026-11-01 — Multiboard et suivi de projet (v1.2.0)
