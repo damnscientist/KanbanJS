@@ -30,7 +30,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Undo/redo 30 niveaux avec streak synchronisé, reconstruction DOM sans `location.reload()`
 - Parsing robuste du JSON IA (équilibrage bracketing, détection guillemets, strip code fences)
 - Gestion d'erreur complète : bannière `QuotaExceededError`, crash recovery dans `init()`, `AbortController` 60s
-- Tests : 229 tests via iframe/postMessage (`test.html`) — DB, fichier compagnon, multiboard, interface (DOM de l'iframe)
+- Tests : 234 tests via iframe/postMessage (`test.html`) — DB, fichier compagnon, multiboard, interface (DOM de l'iframe)
 
 **UX & design**
 - Raccourcis clavier vim-like complets : navigation h/l/j/k, actions carte/liste, recherche `Ctrl+K`, undo/redo

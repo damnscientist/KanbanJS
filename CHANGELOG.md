@@ -25,7 +25,7 @@ Historique des versions, de la plus récente à la plus ancienne. Le contexte de
   - **Réglages modifiés dans un autre onglet** (streak, seuil) : appliqués sans recharger, piles undo neutralisées.
   - **Synchro en attente puis changement de board** : n'efface plus l'historique d'annulation du board d'arrivée.
   - Valeurs de streak neutralisées dans les piles undo : JSON valide (un retour à la v1.1.2 ne remet plus le streak à zéro) ; import sur un board secondaire : jamais de réécriture du streak global ; service worker : `index.html` mis en cache en contournant le cache HTTP (`cache: 'reload'`).
-- **Tests** : 76 → 229 ; scénarios navigateur réel : 25/25.
+- **Tests** : 76 → 234 (dont la décomposition IA et template lancée depuis un board secondaire) ; scénarios navigateur réel : 25/25.
 - **Documentation** : historique déplacé d'`AGENTS.md` vers `CHANGELOG.md` ; roadmap réordonnée (traduction, mode focus, minuteur, son, LM Studio, checklist de distribution) ; référence technique **Multiboard** dans `AGENTS.md`.
 - **Service worker** : cache `kanbanjs-v6` → `v7`. `VERSION` 1.2.0.
 

@@ -1667,6 +1667,75 @@ async function run() {
     } catch (_) {}
   }
 
+  // ── 39. Décomposition (IA et template) lancée depuis un board secondaire ──
+  let boardW = null, mainIaId = null;
+  {
+    const d = frame.contentDocument;
+    const w = frame.contentWindow;
+    const tick = (ms = 120) => new Promise(r => setTimeout(r, ms));
+    const cfgBefore = w.localStorage.getItem('kanbanjs:config');
+    const realFetch = w.fetch;
+    try {
+      await send('appSwitch', { id: 'main' });
+      mainIaId = (await send('createList', { title: 'IA (ancienne)' })).id;
+      await send('rebuild');
+      const mainState = await send('rawGet', { key: 'kanbanjs:state' });
+
+      boardW = await send('appCreateBoard', { name: 'Décomposition W' });
+      await send('appSwitch', { id: boardW.id });
+
+      w.localStorage.setItem('kanbanjs:config', JSON.stringify({ provider: 'openai', endpoint: 'http://ia.invalid/v1', apiKey: 'k', model: 'm' }));
+      let round = 0;
+      w.fetch = async () => {
+        round++;
+        const tasks = round === 1 ? ['w1', 'w2'] : ['w3', 'w4', 'w5'];
+        const body = JSON.stringify({ choices: [{ message: { content: JSON.stringify(tasks) } }], usage: { prompt_tokens: 1, completion_tokens: 1 } });
+        return { ok: true, status: 200, statusText: 'OK', text: async () => body };
+      };
+      const runIA = async () => {
+        d.getElementById('decomposeFab').click(); await tick();
+        d.getElementById('decomposeInput').value = 'Préparer la réunion';
+        d.getElementById('decomposeBtn').click(); await tick(400);
+      };
+
+      await runIA();
+      let wl = await send('getLists');
+      const ia1 = wl[0];
+      assert('IA depuis un board secondaire : la liste est créée en tête de ce board',
+        ia1.title.startsWith('IA ') && (await send('getCards', { listId: ia1.id })).map(c => c.text).join() === 'w1,w2', wl.map(l => l.title));
+      assert('IA depuis un board secondaire : affichée à l’écran', d.querySelector('#board .list .list-title').textContent.startsWith('IA '));
+
+      await runIA();
+      wl = await send('getLists');
+      assert('IA relancée : remplace la liste « IA » de ce board seulement',
+        wl.filter(l => l.title.startsWith('IA ')).length === 1 && (await send('getCards', { listId: wl[0].id })).length === 3);
+
+      w.localStorage.removeItem('kanbanjs:config');
+      d.getElementById('decomposeFab').click(); await tick();
+      const chip = d.querySelector('#decomposeModal .template-chip');
+      const tplName = chip.textContent;
+      chip.click(); await tick(300);
+      wl = await send('getLists');
+      assert('Template depuis un board secondaire : liste créée en tête de ce board',
+        wl[0].title === tplName && (await send('getCards', { listId: wl[0].id })).length > 0, [tplName, wl.map(l => l.title)]);
+
+      assert('Board principal intact (y compris sa propre liste « IA … »)',
+        (await send('rawGet', { key: 'kanbanjs:state' })) === mainState);
+    } catch (e) {
+      assert('Décomposition depuis un board secondaire', false, e.message);
+    } finally {
+      w.fetch = realFetch;
+      if (cfgBefore === null) w.localStorage.removeItem('kanbanjs:config'); else w.localStorage.setItem('kanbanjs:config', cfgBefore);
+      d.getElementById('decomposeModal').classList.remove('open');
+      try {
+        await send('appSwitch', { id: 'main' });
+        if (boardW) await send('appDeleteBoard', { id: boardW.id });
+        if (mainIaId) await send('deleteList', { id: mainIaId });
+        await send('rebuild');
+      } catch (_) {}
+    }
+  }
+
   // ── Résumé ──────────────────────────────────────────────────
   const total = pass + fail;
   const summary = document.createElement('div');
