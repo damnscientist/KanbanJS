@@ -249,6 +249,56 @@
       color: var(--text);
     }
 
+    .board-switch { position: relative; display: flex; align-items: center; gap: 2px; }
+    .board-menu-btn { font-size: 12px; }
+    .board-menu {
+      display: none;
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      min-width: 260px;
+      max-width: 360px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow);
+      padding: 6px;
+      z-index: 6000;
+    }
+    .board-menu.open { display: block; animation: fadeIn .12s ease; }
+    .board-menu .field-input { width: 100%; margin-bottom: 4px; }
+    .board-menu ul { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow-y: auto; }
+    .board-menu li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      color: var(--text);
+      cursor: pointer;
+    }
+    .board-menu li .bm-check { width: 14px; color: var(--accent); flex-shrink: 0; }
+    .board-menu li .bm-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .board-menu li.bm-new { color: var(--text-muted); border-top: 1px solid var(--border); margin-top: 4px; }
+    .board-menu li.hl, .board-menu li:hover { background: var(--surface-2); }
+    .board-menu li.hl { box-shadow: inset 2px 0 0 var(--accent); }
+    .boards-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 14px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .boards-row .br-name { flex: 1 1 60%; font-weight: 600; color: var(--text); }
+    .boards-row .br-controls { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 8px 14px; }
+    .boards-row .br-name small { font-weight: 400; color: var(--text-dim); margin-left: 6px; }
+    .boards-row label { display: flex; align-items: center; gap: 6px; color: var(--text-muted); }
+    .boards-row input[type=number] { width: 64px; }
+    .boards-row .btn { margin-left: auto; padding: 4px 10px; }
+
     .spacer { flex: 1; }
 
     .progress-bar {
@@ -1244,7 +1294,14 @@
 <div id="app">
   <header>
     <h1>KanbanJS</h1>
-    <input class="board-name" id="boardName" value="Mon Board" title="Cliquer pour renommer" maxlength="200" />
+    <div class="board-switch">
+      <input class="board-name" id="boardName" value="Mon Board" title="Cliquer pour renommer" maxlength="200" aria-label="Nom du board" />
+      <button class="btn-icon board-menu-btn" id="boardMenuBtn" title="Changer de board (b)" aria-label="Changer de board" aria-haspopup="dialog" aria-expanded="false" aria-controls="boardMenu">&#9662;</button>
+      <div class="board-menu" id="boardMenu">
+        <input type="text" class="field-input" id="boardFilter" placeholder="Filtrer ou créer un board…" aria-label="Filtrer ou créer un board" maxlength="200" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="boardMenuList" aria-expanded="true" />
+        <ul id="boardMenuList" role="listbox" aria-label="Boards"></ul>
+      </div>
+    </div>
     <div class="progress-bar" id="progressBar">
       <div class="progress-fill" id="progressFill"></div>
     </div>
@@ -1282,6 +1339,7 @@
         <button class="modal-tab active" data-tab="system">Système</button>
         <button class="modal-tab" data-tab="themes">Thèmes</button>
         <button class="modal-tab" data-tab="data">Données</button>
+        <button class="modal-tab" data-tab="boards">Boards</button>
       </div>
       <div class="modal-body">
         <div class="tab-content active" id="tab-system">
@@ -1364,6 +1422,17 @@
             <button class="btn btn-ghost" id="autosaveExport">Télécharger une sauvegarde (JSON)</button>
           </div>
           <span class="cfg-status" id="autosaveMsg"></span>
+        </div>
+        <div class="tab-content" id="tab-boards">
+          <div class="field">
+            <span class="field-help">
+              Chaque board est indépendant : ses listes, son historique d’annulation et son fichier de sauvegarde.
+              « Compte pour le streak » active le streak, le compteur du jour, les confettis et les citations.
+              Le seuil de suivi signale les cartes dont la note n’a pas bougé depuis N jours (0 = désactivé).
+            </span>
+          </div>
+          <div id="boardsList"></div>
+          <span class="cfg-status" id="boardsMsg"></span>
         </div>
       </div>
     </div>
@@ -3817,6 +3886,7 @@ const App = (() => {
     function activateTab(name) {
       document.querySelectorAll('#configModal .modal-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
       document.querySelectorAll('#configModal .tab-content').forEach(tc => tc.classList.toggle('active', tc.id === 'tab-' + name));
+      if (name === 'boards') renderBoardsTab().catch(() => {});
     }
 
     document.querySelectorAll('#configModal .modal-tab').forEach(tab => {
@@ -3849,6 +3919,10 @@ const App = (() => {
       overlay.classList.add('open');
       if (tabName) activateTab(tabName);
       if (tabName === 'data') { refreshAutoSaveUI(); return; }
+      if (document.getElementById('tab-boards').classList.contains('active')) {
+        renderBoardsTab().catch(() => {});
+        return;
+      }
       if (providerEl.value === 'ollama') modelEl.focus();
       else endpointEl.focus();
     }
@@ -4027,7 +4101,7 @@ const App = (() => {
     const url  = URL.createObjectURL(blob);
     const a    = make('a');
     a.href     = url;
-    a.download = 'kanbanjs-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.download = 'kanbanjs-' + (await boardSlug()) + new Date().toISOString().slice(0, 10) + '.json';
     a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
@@ -5004,6 +5078,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     u:      { fn: _undo,        when: () => _undoSize() && !_inInput() },
     p:      { fn: _paste,       when: () => _selList && _selList.isConnected && !Clipboard.isEmpty() && Clipboard.type() === 'card' && !_inInput() },
     N:      { fn: _newList,       when: () => !_inInput() },
+    b:      { fn: () => BoardMenu.open(), when: () => !_inInput() },
     R:      { fn: renameList,     when: () => _selList && _selList.isConnected && !_inInput() },
     X:      { fn: cutList,        when: () => _selList && _selList.isConnected && !_inInput() },
     Y:      { fn: copyList,       when: () => _selList && _selList.isConnected && !_inInput() },
@@ -5088,6 +5163,9 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       [['X'],     'Couper'],
       [['Y'],     'Copier'],
       [['P'],     'Coller'],
+    ]));
+    colB.appendChild(rows('Boards', [
+      [['b'],     'Changer / cr\u00e9er un board'],
     ]));
     cols.append(colA, colB);
 
@@ -5262,6 +5340,22 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
         || !!document.querySelector('.modal-overlay.open, .search-overlay.open, .cheatsheet-overlay.open');
   }
 
+  function _switchBlocked() {
+    if (document.activeElement === boardNameInput) return true;
+    return !!boardEl.querySelector('.card.editing, .card-notes.open, .list-title-input.show, .new-card-form.open, .add-list-form.open')
+        || !!document.querySelector('.modal-overlay.open, .search-overlay.open');
+  }
+
+  let _boardGoneNotice = false;
+
+  function refreshBoardsUI() {
+    if (BoardMenu.isOpen()) BoardMenu.render().catch(() => {});
+    const tab = document.getElementById('tab-boards');
+    if (tab.classList.contains('active') && document.getElementById('configModal').classList.contains('open')) {
+      renderBoardsTab().catch(() => {});
+    }
+  }
+
   async function _syncFromStorage() {
     if (_syncing || _switching) {
       _storageTimer = setTimeout(_syncFromStorage, 200);
@@ -5277,6 +5371,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
         _bindStacks();
         _saveStack(UK, []); _saveStack(RK, []); _saveStack(UKS, []); _saveStack(RKS, []);
         await _ensureFirstSeen();
+        _boardGoneNotice = true;
       }
       AutoSave.refreshPending();
       if (_editingActive()) {
@@ -5284,6 +5379,11 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
         return;
       }
       await _rebuild();
+      refreshBoardsUI();
+      if (_boardGoneNotice) {
+        _boardGoneNotice = false;
+        flashMessage(headerInfoEl, 'Ce board a \u00e9t\u00e9 supprim\u00e9 dans un autre onglet \u2014 retour au board principal.', '', 6000);
+      }
     } finally {
       _syncing = false;
     }
@@ -5296,6 +5396,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       if (!DB.countsStreak()) return;
     } else if (e.key === DB.INDEX_KEY) {
       refreshHeaderInfo();
+      refreshBoardsUI();
       return;
     } else if (e.key !== DB.key()) {
       const m = /^kanbanjs:state(?::(.+))?$/.exec(e.key);
@@ -5323,7 +5424,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
   async function switchBoard(id) {
     if (id === DB.activeBoard()) return true;
-    if (_switching || _syncing || _editingActive()) return false;
+    if (_switching || _syncing || _switchBlocked()) return false;
     _switching = true;
     const from = DB.activeBoard();
     try {
@@ -5342,6 +5443,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       await _ensureFirstSeen();
       await _rebuild();
       await refreshAutoSaveUI();
+      refreshBoardsUI();
       return to === id;
     } finally {
       _switching = false;
@@ -5366,6 +5468,223 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     await AutoSave.forget(id);
     for (const k of _stackKeysFor(id)) { try { sessionStorage.removeItem(k); } catch (_) {} }
     return true;
+  }
+
+  async function boardSlug() {
+    if (DB.activeBoard() === DB.MAIN) return '';
+    const name = (await DB.getBoard()).name || '';
+    const slug = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+    return slug ? slug + '-' : '';
+  }
+
+  // ── MENU DES BOARDS ────────────────────────────────────────
+  const BoardMenu = (() => {
+    const btn    = document.getElementById('boardMenuBtn');
+    const menu   = document.getElementById('boardMenu');
+    const filter = document.getElementById('boardFilter');
+    const listEl = document.getElementById('boardMenuList');
+    let _items = [];
+    let _hl = 0;
+
+    const fold = str => String(str).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+    function isOpen() { return menu.classList.contains('open'); }
+
+    async function render() {
+      const q = filter.value.trim();
+      const boards = await DB.listBoards();
+      const shown = q ? boards.filter(b => fold(b.name).includes(fold(q))) : boards;
+      _items = shown.map(b => ({ kind: 'board', id: b.id, name: b.name, active: b.active }));
+      const exact = q && boards.some(b => fold(b.name) === fold(q));
+      if (!exact) _items.push({ kind: 'new', name: q });
+      if (_hl >= _items.length) _hl = _items.length - 1;
+      if (_hl < 0) _hl = 0;
+      listEl.innerHTML = '';
+      _items.forEach((it, i) => {
+        const li = make('li', it.kind === 'new' ? 'bm-new' : '');
+        li.id = 'bm-opt-' + i;
+        li.setAttribute('role', 'option');
+        const check = make('span', 'bm-check');
+        check.textContent = it.active ? '\u2713' : (it.kind === 'new' ? '+' : '');
+        const name = make('span', 'bm-name');
+        name.textContent = it.kind === 'new'
+          ? (it.name ? 'Cr\u00e9er \u00ab ' + it.name + ' \u00bb' : 'Nouveau board')
+          : it.name;
+        li.append(check, name);
+        li.addEventListener('mousedown', e => e.preventDefault());
+        li.addEventListener('mouseenter', () => setHl(i));
+        li.addEventListener('click', () => choose(i));
+        listEl.appendChild(li);
+      });
+      setHl(_hl);
+    }
+
+    function setHl(i) {
+      _hl = i;
+      const lis = listEl.querySelectorAll('li');
+      lis.forEach((li, j) => {
+        li.classList.toggle('hl', j === i);
+        li.setAttribute('aria-selected', j === i ? 'true' : 'false');
+      });
+      if (lis[i]) {
+        filter.setAttribute('aria-activedescendant', lis[i].id);
+        lis[i].scrollIntoView({ block: 'nearest' });
+      } else {
+        filter.removeAttribute('aria-activedescendant');
+      }
+    }
+
+    async function open() {
+      const cs = document.querySelector('.cheatsheet-overlay.open');
+      if (cs) cs.classList.remove('open');
+      if (_switchBlocked()) {
+        flashMessage(headerInfoEl, 'Terminez l\u2019\u00e9dition en cours avant de changer de board.', '', 3000);
+        return;
+      }
+      filter.value = '';
+      _hl = 0;
+      menu.classList.add('open');
+      btn.setAttribute('aria-expanded', 'true');
+      await render();
+      const activeIdx = _items.findIndex(it => it.active);
+      if (activeIdx >= 0) setHl(activeIdx);
+      filter.focus();
+    }
+
+    function close(refocus) {
+      if (!isOpen()) return;
+      menu.classList.remove('open');
+      btn.setAttribute('aria-expanded', 'false');
+      if (document.activeElement === filter) {
+        if (refocus) btn.focus();
+        else filter.blur();
+      }
+    }
+
+    async function choose(i) {
+      const it = _items[i];
+      if (!it) return;
+      close(true);
+      const fail = text => flashMessage(headerInfoEl, text, '', 4000);
+      if (it.kind === 'board') {
+        if (it.active) return;
+        if (!(await switchBoard(it.id))) fail('Changement de board impossible pour le moment.');
+        return;
+      }
+      let created;
+      try { created = await createBoard(it.name); }
+      catch (err) {
+        console.warn('KanbanJS : cr\u00e9ation de board impossible.', err);
+        fail('Cr\u00e9ation du board impossible (stockage satur\u00e9 ?).');
+        return;
+      }
+      if (!(await switchBoard(created.id))) {
+        fail('Board \u00ab ' + created.name + ' \u00bb cr\u00e9\u00e9, mais le changement a \u00e9chou\u00e9 : choisissez-le dans le menu.');
+        return;
+      }
+      if (!it.name) {
+        boardNameInput.focus();
+        boardNameInput.select();
+      }
+    }
+
+    btn.addEventListener('click', () => (isOpen() ? close() : open()));
+    filter.addEventListener('input', () => { _hl = 0; render(); });
+    filter.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setHl(Math.min(_hl + 1, _items.length - 1)); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setHl(Math.max(_hl - 1, 0)); }
+      else if (e.key === 'Enter') { e.preventDefault(); choose(_hl); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(true); }
+    });
+    filter.addEventListener('focusout', e => {
+      if (e.relatedTarget === btn || menu.contains(e.relatedTarget)) return;
+      close();
+    });
+    document.addEventListener('mousedown', e => {
+      if (isOpen() && !menu.contains(e.target) && e.target !== btn) close();
+    });
+
+    return { open, close, isOpen, render };
+  })();
+
+  // ── ONGLET BOARDS (Configuration) ──────────────────────────
+  async function renderBoardsTab() {
+    const box = document.getElementById('boardsList');
+    const msg = document.getElementById('boardsMsg');
+    const boards = await DB.listBoards();
+    box.innerHTML = '';
+    for (const b of boards) {
+      const row = make('div', 'boards-row');
+      row.dataset.id = b.id;
+      const name = make('span', 'br-name');
+      name.textContent = b.name;
+      if (b.active || b.id === DB.MAIN) {
+        const tag = make('small');
+        tag.textContent = [b.id === DB.MAIN ? 'principal' : '', b.active ? 'actif' : ''].filter(Boolean).join(' \u00b7 ');
+        name.appendChild(tag);
+      }
+
+      const streakLbl = make('label');
+      const streak = make('input');
+      streak.type = 'checkbox';
+      streak.checked = b.streak;
+      streak.className = 'br-streak';
+      streakLbl.append(streak, document.createTextNode('Compte pour le streak'));
+      const gone = async () => {
+        flashMessage(msg, 'Ce board n\u2019existe plus (supprim\u00e9 ailleurs ?).', 'error', 4000);
+        await renderBoardsTab();
+      };
+      streak.addEventListener('change', async () => {
+        try { await setBoardMeta({ streak: streak.checked }, b.id); }
+        catch (_) { await gone(); return; }
+        flashMessage(msg, 'Enregistr\u00e9.', 'success', 2000);
+      });
+
+      const staleLbl = make('label');
+      const stale = make('input');
+      stale.type = 'number';
+      stale.min = '0';
+      stale.max = '365';
+      stale.step = '1';
+      stale.value = String(b.staleDays);
+      stale.className = 'field-input br-stale';
+      staleLbl.append(document.createTextNode('Seuil de suivi'), stale, document.createTextNode('j'));
+      stale.addEventListener('change', async () => {
+        const raw = stale.value.trim();
+        if (raw === '' || !Number.isFinite(Number(raw))) {
+          stale.value = String(b.staleDays);
+          flashMessage(msg, 'Seuil invalide : valeur pr\u00e9c\u00e9dente conserv\u00e9e.', 'error', 3000);
+          return;
+        }
+        const n = Math.max(0, Math.min(365, Math.round(Number(raw))));
+        stale.value = String(n);
+        try { await setBoardMeta({ staleDays: n }, b.id); }
+        catch (_) { await gone(); return; }
+        b.staleDays = n;
+        if (b.id === DB.activeBoard()) await _rebuild();
+        flashMessage(msg, 'Enregistr\u00e9.', 'success', 2000);
+      });
+
+      const del = make('button', 'btn btn-ghost br-delete');
+      del.textContent = 'Supprimer';
+      del.setAttribute('aria-label', 'Supprimer le board ' + b.name);
+      if (b.id === DB.MAIN) { del.disabled = true; del.title = 'Le board principal ne peut pas \u00eatre supprim\u00e9.'; }
+      else if (b.active) { del.disabled = true; del.title = 'Changez de board pour supprimer celui-ci.'; }
+      del.addEventListener('click', async () => {
+        if (!confirm('Supprimer le board \u00ab ' + b.name + ' \u00bb et toutes ses cartes ? Cette action est d\u00e9finitive (le fichier de sauvegarde \u00e9ventuel reste sur le disque).')) return;
+        if (await deleteBoard(b.id)) {
+          flashMessage(msg, 'Board supprim\u00e9.', 'success', 2500);
+          await renderBoardsTab();
+        } else {
+          flashMessage(msg, 'Suppression impossible.', 'error', 3000);
+        }
+      });
+
+      const controls = make('div', 'br-controls');
+      controls.append(streakLbl, staleLbl);
+      row.append(name, del, controls);
+      box.appendChild(row);
+    }
   }
 
   // ── REBUILD ────────────────────────────────────────────────

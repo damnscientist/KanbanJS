@@ -1115,6 +1115,220 @@ async function run() {
     } catch (_) {}
   }
 
+  // ── 35. Multiboard — interface (menu, raccourci b, onglet Boards) ──
+  const uiCreated = [];
+  try {
+    const d = frame.contentDocument;
+    const w = frame.contentWindow;
+    const tick = (ms = 120) => new Promise(r => setTimeout(r, ms));
+    const key = (target, k) => target.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    const type = (el, v) => { el.value = v; el.dispatchEvent(new w.Event('input', { bubbles: true })); };
+    const items = () => [...d.querySelectorAll('#boardMenuList li')].map(li => li.textContent);
+    await send('appSwitch', { id: 'main' });
+    d.activeElement && d.activeElement.blur();
+
+    key(d, 'b');
+    await tick();
+    const menu = d.getElementById('boardMenu');
+    const filter = d.getElementById('boardFilter');
+    assert('Raccourci b : ouvre le menu (le focus se vérifie hors harnais, iframe masquée)',
+      menu.classList.contains('open') && d.getElementById('boardMenuBtn').getAttribute('aria-expanded') === 'true');
+    const first = items();
+    assert('Menu : le board actif est coché, « Nouveau board » en dernier',
+      first.some(t => t.startsWith('✓')) && /Nouveau board$/.test(first[first.length - 1]), first);
+
+    type(filter, 'Projet UI');
+    await tick();
+    assert('Filtre sans correspondance : proposition « Créer « … » »',
+      items().length === 1 && items()[0].includes('Créer « Projet UI »'), items());
+    key(filter, 'Enter');
+    await tick(400);
+    const created = (await send('boardList')).find(b => b.name === 'Projet UI');
+    if (created) uiCreated.push(created.id);
+    assert('Entrée : crée le board et bascule dessus',
+      !!created && (await send('boardActive')) === created.id && d.title.includes('Projet UI') && !menu.classList.contains('open'));
+
+    d.activeElement && d.activeElement.blur();
+    key(d, 'b');
+    await tick();
+    const mainName = (await send('boardList')).find(b => b.id === 'main').name;
+    type(filter, mainName.slice(0, 3).toUpperCase());
+    await tick();
+    assert('Filtre insensible à la casse', items().some(t => t.includes(mainName)), items());
+    key(filter, 'Enter');
+    await tick(400);
+    assert('Entrée sur un board existant : bascule dessus', (await send('boardActive')) === 'main');
+
+    key(d, 'b');
+    await tick();
+    key(filter, 'ArrowDown');
+    await tick();
+    const hlIdx = [...d.querySelectorAll('#boardMenuList li')].findIndex(li => li.classList.contains('hl'));
+    assert('Flèches : déplacent la mise en évidence', hlIdx === 1, hlIdx);
+    key(filter, 'Escape');
+    await tick();
+    assert('Échap : ferme le menu sans changer de board',
+      !menu.classList.contains('open') && (await send('boardActive')) === 'main');
+
+    await send('openForm', { open: true });
+    d.getElementById('boardMenuBtn').click();
+    await tick();
+    assert('Menu refusé pendant une édition', !menu.classList.contains('open'));
+    await send('openForm', { open: false });
+
+    const openTab = async () => {
+      d.getElementById('configBtn').click();
+      await tick();
+      d.querySelector('#configModal .modal-tab[data-tab="boards"]').click();
+      await tick(200);
+      return [...d.querySelectorAll('#boardsList .boards-row')];
+    };
+    await send('appSwitch', { id: created.id });
+    let rows = await openTab();
+    assert('Onglet Boards : une ligne par board', rows.length === (await send('boardList')).length, rows.length);
+    assert('Onglet Boards : le board principal ne peut pas être supprimé, même inactif',
+      rows.find(r => r.dataset.id === 'main').querySelector('.br-delete').disabled);
+    assert('Onglet Boards : le board actif ne peut pas être supprimé',
+      rows.find(r => r.dataset.id === created.id).querySelector('.br-delete').disabled);
+    d.getElementById('configModalClose').click();
+    await send('appSwitch', { id: 'main' });
+    rows = await openTab();
+    const rowUI = rows.find(r => r.dataset.id === created.id);
+    assert('Onglet Boards : un board secondaire non actif peut être supprimé',
+      !rowUI.querySelector('.br-delete').disabled);
+
+    rowUI.querySelector('.br-streak').click();
+    await tick(150);
+    const st = rowUI.querySelector('.br-stale');
+    st.value = '30';
+    st.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await tick(150);
+    const metaUI = await send('boardMeta', { id: created.id });
+    assert('Onglet Boards : streak et seuil enregistrés', metaUI.streak === true && metaUI.staleDays === 30, metaUI);
+
+    const realConfirm = w.confirm;
+    w.confirm = () => true;
+    rowUI.querySelector('.br-delete').click();
+    await tick(300);
+    w.confirm = realConfirm;
+    assert('Onglet Boards : suppression après confirmation',
+      !(await send('boardList')).some(b => b.id === created.id)
+        && !d.querySelector('#boardsList .boards-row[data-id="' + created.id + '"]'));
+    if (!(await send('boardList')).some(b => b.id === created.id)) uiCreated.length = 0;
+    d.getElementById('configModalClose').click();
+
+    const cs = d.querySelector('.cheatsheet').textContent;
+    assert('Aide clavier : le raccourci b est documenté', cs.includes('Changer / créer un board'));
+  } catch (e) {
+    assert('Multiboard — interface', false, e.message);
+  } finally {
+    try {
+      await send('appSwitch', { id: 'main' });
+      for (const id of uiCreated) await send('appDeleteBoard', { id });
+    } catch (_) {}
+  }
+
+  // ── 36. Multiboard — interface : correctifs de relecture ──
+  const ui2 = [];
+  try {
+    const d = frame.contentDocument;
+    const w = frame.contentWindow;
+    const tick = (ms = 120) => new Promise(r => setTimeout(r, ms));
+    const key = (target, k) => target.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    const type = (el, v) => { el.value = v; el.dispatchEvent(new w.Event('input', { bubbles: true })); };
+    const menu = d.getElementById('boardMenu');
+    const filter = d.getElementById('boardFilter');
+    const items = () => [...d.querySelectorAll('#boardMenuList li')].map(li => li.textContent);
+    await send('appSwitch', { id: 'main' });
+
+    const acc = await send('appCreateBoard', { name: 'Équipe Été' });
+    ui2.push(acc.id);
+    key(d, 'b'); await tick();
+    type(filter, 'equipe ete'); await tick();
+    assert('Filtre insensible aux accents', items().some(t => t.includes('Équipe Été')), items());
+    type(filter, 'ÉQUIPE été'); await tick();
+    assert('Nom déjà existant : pas de proposition de doublon', !items().some(t => t.includes('Créer')), items());
+    const hl = d.querySelector('#boardMenuList li.hl');
+    assert('ARIA : combobox, option active annoncée',
+      filter.getAttribute('role') === 'combobox' && hl && filter.getAttribute('aria-activedescendant') === hl.id
+        && hl.getAttribute('aria-selected') === 'true');
+    key(filter, 'Escape'); await tick();
+
+    const card = d.querySelector('#board .card');
+    card.click(); await tick();
+    key(d, 'b'); await tick();
+    key(filter, 'Escape'); await tick();
+    assert('Échap dans le menu : ferme le menu sans désélectionner la carte',
+      !menu.classList.contains('open') && card.classList.contains('card-selected'));
+
+    const prev = d.querySelector('#board .card-notes-preview');
+    prev.classList.add('open');
+    key(d, 'b'); await tick();
+    assert('Aperçus de notes dépliés : le menu s’ouvre quand même', menu.classList.contains('open'));
+    key(filter, 'Escape'); await tick();
+    prev.classList.remove('open');
+
+    d.querySelector('.cheatsheet-overlay').classList.add('open');
+    key(d, 'b'); await tick();
+    assert('Aide clavier ouverte : b la ferme et ouvre le menu',
+      menu.classList.contains('open') && !d.querySelector('.cheatsheet-overlay').classList.contains('open'));
+    key(filter, 'Escape'); await tick();
+
+    d.getElementById('configBtn').click(); await tick();
+    d.querySelector('#configModal .modal-tab[data-tab="boards"]').click(); await tick(200);
+    d.getElementById('configModalClose').click();
+    const fresh = await send('appCreateBoard', { name: 'Frais' });
+    ui2.push(fresh.id);
+    await send('appSwitch', { id: fresh.id });
+    d.getElementById('configBtn').click(); await tick(250);
+    const rowFresh = d.querySelector('#boardsList .boards-row[data-id="' + fresh.id + '"]');
+    assert('Réouverture par ⚙ : l’onglet Boards est à jour (nouveau board, marqué actif)',
+      !!rowFresh && rowFresh.querySelector('.br-name').textContent.includes('actif'));
+    d.getElementById('configModalClose').click();
+    await send('appSwitch', { id: 'main' });
+
+    d.getElementById('configBtn').click(); await tick(250);
+    const rowAcc = d.querySelector('#boardsList .boards-row[data-id="' + acc.id + '"]');
+    const st = rowAcc.querySelector('.br-stale');
+    st.value = '';
+    st.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await tick(150);
+    assert('Seuil vidé : valeur précédente conservée, pas de désactivation silencieuse',
+      (await send('boardMeta', { id: acc.id })).staleDays === 14 && st.value === '14');
+
+    const rowF = d.querySelector('#boardsList .boards-row[data-id="' + fresh.id + '"]');
+    await send('appDeleteBoard', { id: fresh.id });
+    ui2.splice(ui2.indexOf(fresh.id), 1);
+    rowF.querySelector('.br-streak').click();
+    await tick(250);
+    assert('Onglet Boards : board supprimé ailleurs → message d’erreur et liste rafraîchie',
+      d.getElementById('boardsMsg').textContent.includes('existe plus')
+        && !d.querySelector('#boardsList .boards-row[data-id="' + fresh.id + '"]'));
+    d.getElementById('configModalClose').click();
+
+    const g = await send('appCreateBoard', { name: 'Disparu' });
+    await send('appSwitch', { id: g.id });
+    const idxG = JSON.parse(await send('rawGet', { key: 'kanbanjs:boards' })).filter(b => b.id !== g.id);
+    await send('rawSet', { key: 'kanbanjs:boards', value: JSON.stringify(idxG) });
+    for (const sfx of ['', '.bak']) await send('rawRemove', { key: 'kanbanjs:state:' + g.id + sfx });
+    await send('syncFromStorage');
+    await tick(150);
+    assert('Board actif supprimé dans un autre onglet : retour au principal, avec explication',
+      (await send('boardActive')) === 'main'
+        && d.getElementById('headerInfo').textContent.includes('supprimé dans un autre onglet'));
+    await send('autoSaveForget', { id: g.id });
+  } catch (e) {
+    assert('Multiboard — interface (relecture)', false, e.message);
+  } finally {
+    try {
+      const d = frame.contentDocument;
+      d.querySelector('.cheatsheet-overlay').classList.remove('open');
+      d.getElementById('configModal').classList.remove('open');
+      await send('appSwitch', { id: 'main' });
+      for (const id of ui2) await send('appDeleteBoard', { id });
+    } catch (_) {}
+  }
+
   // ── Résumé ──────────────────────────────────────────────────
   const total = pass + fail;
   const summary = document.createElement('div');
