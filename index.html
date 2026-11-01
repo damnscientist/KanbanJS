@@ -2049,7 +2049,7 @@ const DB = (() => {
       }
       _state = state;
       _save();
-      if (streak && _meta().streak) {
+      if (streak && _active === MAIN && _meta().streak) {
         try { localStorage.setItem(STREAK_KEY, streak); } catch (_) {}
       }
     },
@@ -2193,7 +2193,7 @@ const AutoSave = (() => {
 
   function _persist() {
     if (!_handle) return Promise.resolve();
-    return _store.set(_key(), { handle: _handle, lastWriteAt: _lastWriteAt })
+    return _store.set(_key(), { handle: _handle, lastWriteAt: _lastWriteAt, pending: _pending === 'restore' ? 'restore' : null })
       .catch(e => { console.warn('KanbanJS : handle de sauvegarde non persist\u00e9.', e); });
   }
 
@@ -2229,12 +2229,14 @@ const AutoSave = (() => {
     }, POLL_MS);
   }
 
-  async function _readInto(handle) {
+  async function _readInto(handle, boardId) {
     const h = handle || _handle;
     if (!h) return 0;
     try {
       const file = await h.getFile();
-      await DB.importJSON(await file.text());
+      const text = await file.text();
+      if (boardId && DB.activeBoard() !== boardId) return 0;
+      await DB.importJSON(text);
       return file.lastModified || Date.now();
     } catch (_) { return 0; }
   }
@@ -2273,16 +2275,30 @@ const AutoSave = (() => {
     const perm = await _permission();
     if (gen !== _gen) return;
     _set(perm === 'granted' ? 'active' : 'paused');
-    if (DB.loadSource() === 'default') _setPending('restore');
-    else if (perm === 'granted' && await _externalNewer()) _setPending('reload');
+    if (DB.loadSource() === 'default' || rec.pending === 'restore') {
+      _setPending('restore');
+      if (rec.pending !== 'restore') await _persist();
+    } else if (perm === 'granted' && await _externalNewer() && await _differs()) {
+      if (gen === _gen) _setPending('reload');
+    }
+  }
+
+  async function _differs() {
+    if (!_handle) return false;
+    try {
+      const text = await (await _handle.getFile()).text();
+      return text !== await DB.exportJSON();
+    } catch (_) { return false; }
   }
 
   const enable = () => _serial(_enable);
   async function _enable() {
     if (!available()) { _set('unsupported'); return false; }
+    const id0 = DB.activeBoard();
     let handle = null;
     try { handle = await window.showSaveFilePicker({ suggestedName: FILE_NAME, types: FILE_TYPES }); }
     catch (_) { return false; }
+    if (DB.activeBoard() !== id0) return false;
     _gen++;
     _boundId = DB.activeBoard();
     _handle = handle;
@@ -2295,13 +2311,15 @@ const AutoSave = (() => {
 
   const attach = picked => _serial(() => _attach(picked));
   async function _attach(picked) {
+    const id0 = DB.activeBoard();
     if (!picked) {
       if (typeof window.showOpenFilePicker !== 'function') return false;
       try { [picked] = await window.showOpenFilePicker({ types: FILE_TYPES, multiple: false }); }
       catch (_) { return false; }
     }
-    const modified = await _readInto(picked);
-    if (!modified) return false;
+    if (DB.activeBoard() !== id0) return false;
+    const modified = await _readInto(picked, id0);
+    if (!modified || DB.activeBoard() !== id0) return false;
     _gen++;
     _boundId = DB.activeBoard();
     _handle = picked;
@@ -2335,7 +2353,8 @@ const AutoSave = (() => {
     if (gen !== _gen || !_handle) return false;
     if (perm !== 'granted') { _set('paused'); return false; }
     _set('active');
-    if (await _externalNewer()) { _setPending('reload'); return true; }
+    if (_pending === 'restore') return true;
+    if (await _externalNewer() && await _differs()) { _setPending('reload'); return true; }
     _setPending(null);
     await flush();
     return true;
@@ -2349,11 +2368,12 @@ const AutoSave = (() => {
       try { perm = await _handle.requestPermission({ mode: 'readwrite' }); } catch (_) {}
       if (perm !== 'granted') return false;
     }
-    const modified = await _readInto(_handle);
+    const modified = await _readInto(_handle, _boundId);
     if (!modified) return false;
     _lastWriteAt = modified;
     _setPending(null);
     _set('active');
+    await _persist();
     await flush();
     return true;
   }
@@ -2398,6 +2418,7 @@ const AutoSave = (() => {
 
   function dismiss() {
     _setPending(null);
+    _persist();
     schedule();
   }
 
@@ -2439,7 +2460,7 @@ const AutoSave = (() => {
 
   function refreshPending() {
     if (!_handle) return;
-    if (DB.loadSource() === 'default') _setPending('restore');
+    if (DB.loadSource() === 'default' && _pending !== 'restore') { _setPending('restore'); _persist(); }
   }
 
   const api = {
@@ -2485,6 +2506,13 @@ const AutoSave = (() => {
       forceState(st) { _gen++; _handle = null; _state = st; _notify(); },
       file(name) { const f = name ? _mockFiles[name] : _mockStore; return f ? f.text : null; },
       stored(id) { return !!_mem[idbKeyFor(id)]; },
+      recordPending(id) { const r = _mem[idbKeyFor(id)]; return r ? r.pending || null : undefined; },
+      rebind() { return _bind(); },
+      storedName(id) { const r = _mem[idbKeyFor(id)]; return r && r.handle ? r.handle.name : null; },
+      slowStore(ms) {
+        const base = _memStore;
+        _store = ms ? { ...base, get: async k => { await new Promise(r => setTimeout(r, ms)); return base.get(k); } } : base;
+      },
       setFile(text, modified, name) {
         if (!_mockStore) _mockStore = { text: '', modified: 0 };
         const f = (name && _mockFiles[name]) || _mockStore;
@@ -3266,17 +3294,23 @@ const App = (() => {
     return false;
   }
 
-  const STREAK_SKIP = '\u0000skip';
   function _neutralizeStreak(id) {
     const [, , uks, rks] = _stackKeysFor(id);
+    let cur = {};
+    try { cur = JSON.parse(_streakNow()) || {}; } catch (_) {}
+    const skip = JSON.stringify({ ...cur, skip: true });
     for (const k of [uks, rks]) {
       const arr = _loadStack(k);
-      if (arr.length) _saveStack(k, arr.map(() => STREAK_SKIP));
+      if (arr.length) _saveStack(k, arr.map(() => skip));
     }
   }
 
+  function _isSkip(streakJson) {
+    try { return !!(streakJson && JSON.parse(streakJson).skip === true); } catch (_) { return false; }
+  }
+
   function _restoreStreak(streakJson) {
-    if (!DB.countsStreak() || streakJson === STREAK_SKIP) return;
+    if (!DB.countsStreak() || _isSkip(streakJson)) return;
     if (streakJson) localStorage.setItem(STREAK_KEY, streakJson);
     else localStorage.removeItem(STREAK_KEY);
   }
@@ -4809,10 +4843,16 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       flashMessage(statusEl, 'Analyse en cours…', '', 0);
       debugLines.length = 0;
 
+      const board0 = DB.activeBoard();
       try {
         const { tasks, tokens } = await queryAI(task, debugLog);
         renderDebug();
         if (!tasks || tasks.length === 0) throw new Error('Aucune sous-tâche générée.');
+        if (DB.activeBoard() !== board0) {
+          const msg = 'Le board a chang\u00e9 pendant la d\u00e9composition : r\u00e9sultat ignor\u00e9, relancez-la sur ce board.';
+          flashMessage(headerInfoEl, msg, '', 8000);
+          throw new Error(msg);
+        }
         await createSuggestionsList(tasks, tokens);
         close();
       } catch (err) {
@@ -5457,6 +5497,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       return;
     }
     _syncing = true;
+    _syncPending = false;
     try {
       _saveStack(UK, []); _saveStack(RK, []); _saveStack(UKS, []); _saveStack(RKS, []);
       const before = DB.activeBoard();
@@ -5484,13 +5525,24 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     }
   }
 
+  let _syncPending = false;
+  let _metaSeen = null;
+
   function _onStorage(e) {
     if (e.key === null) {
       _purgeStacks();
     } else if (e.key === STREAK_KEY) {
       if (!DB.countsStreak()) return;
     } else if (e.key === DB.INDEX_KEY) {
-      refreshHeaderInfo();
+      DB.getBoardMeta().then(m => {
+        if (_metaSeen && m.streak !== _metaSeen.streak) _neutralizeStreak(DB.activeBoard());
+        if (_metaSeen && m.staleDays !== _metaSeen.staleDays) {
+          _staleDays = m.staleDays;
+          boardEl.querySelectorAll('.card').forEach(w => { if (w._refreshStale) w._refreshStale(); });
+        }
+        _metaSeen = m;
+        refreshHeaderInfo();
+      }).catch(() => {});
       refreshBoardsUI();
       return;
     } else if (e.key !== DB.key()) {
@@ -5502,6 +5554,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       return;
     }
     clearTimeout(_storageTimer);
+    _syncPending = true;
     _storageTimer = setTimeout(_syncFromStorage, 200);
   }
 
@@ -5522,21 +5575,33 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     if (_switching || _syncing || _switchBlocked()) return false;
     _switching = true;
     const from = DB.activeBoard();
+    let rebuilt = false;
     try {
       try { sessionStorage.setItem('kanbanjs:streak-at:' + from, _streakNow() ?? ''); } catch (_) {}
+      if (_syncPending) {
+        clearTimeout(_storageTimer);
+        _syncPending = false;
+        for (const k of _stackKeysFor(from)) { try { sessionStorage.removeItem(k); } catch (_) {} }
+      }
+      const arrive = async () => {
+        const to = DB.activeBoard();
+        _bindStacks();
+        let seen = null;
+        try { seen = sessionStorage.getItem('kanbanjs:streak-at:' + to); } catch (_) {}
+        if (seen !== null && seen !== (_streakNow() ?? '')) _neutralizeStreak(to);
+        await _ensureFirstSeen();
+        await _rebuild();
+        rebuilt = true;
+      };
       try {
-        await AutoSave.switchBoard(() => DB.useBoard(id));
+        await AutoSave.switchBoard(async () => { await DB.useBoard(id); await arrive(); });
       } catch (err) {
         console.warn('KanbanJS : changement de board incomplet.', err);
       }
       _bindStacks();
       const to = DB.activeBoard();
       if (to === from) return false;
-      let seen = null;
-      try { seen = sessionStorage.getItem('kanbanjs:streak-at:' + to); } catch (_) {}
-      if (seen !== null && seen !== (_streakNow() ?? '')) _neutralizeStreak(to);
-      await _ensureFirstSeen();
-      await _rebuild();
+      if (!rebuilt) await arrive();
       await refreshAutoSaveUI();
       refreshBoardsUI();
       return to === id;
@@ -5549,6 +5614,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     const before = await DB.getBoardMeta(id);
     const after = await DB.setBoardMeta(patch, id);
     if (before.streak !== after.streak) _neutralizeStreak(id);
+    if (id === DB.activeBoard()) _metaSeen = after;
     if (id === DB.activeBoard()) {
       if (before.staleDays !== after.staleDays) await _rebuild();
       else await refreshHeaderInfo();
@@ -5786,7 +5852,8 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
 
   // ── REBUILD ────────────────────────────────────────────────
   async function _rebuild() {
-    _staleDays = (await DB.getBoardMeta()).staleDays;
+    _metaSeen = await DB.getBoardMeta();
+    _staleDays = _metaSeen.staleDays;
     const boardData = await DB.getBoard();
     boardNameInput.value = boardData.name;
     document.title = `KanbanJS \u00b7 ${boardData.name}`;
@@ -5881,6 +5948,10 @@ window.__testAPI = (() => {
         case 'autoSaveStored': result = AutoSave._test.stored(args.id); break;
         case 'autoSaveForget': result = await AutoSave.forget(args.id); break;
         case 'autoSaveForceState': AutoSave._test.forceState(args.state); break;
+        case 'autoSaveRecordPending': result = AutoSave._test.recordPending(args.id); break;
+        case 'autoSaveRebind': await AutoSave._test.rebind(); result = AutoSave.pending(); break;
+        case 'autoSaveStoredName': result = AutoSave._test.storedName(args.id); break;
+        case 'autoSaveSlowStore': AutoSave._test.slowStore(args.ms); break;
         case 'syncFromStorage': await App._syncFromStorage(); break;
         case 'appSwitch':      result = await App.switchBoard(args.id); break;
         case 'appCreateBoard': result = await App.createBoard(args.name); break;

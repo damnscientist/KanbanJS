@@ -16,7 +16,16 @@ Historique des versions, de la plus récente à la plus ancienne. Le contexte de
   - **`autoResize`** : l'épaisseur des bordures (`border-box`) était oubliée — barre de défilement parasite dans toutes les notes.
   - **`saveNotes`** n'écrit plus une note inchangée (instantanés undo parasites à chaque ouverture/fermeture).
 - **Méthode** : livré en 5 étapes (`DB`, `AutoSave`, `App`, interface, suivi de projet), chacune **relue en contexte neuf** par un sous-agent en lecture seule avant commit. Les relectures ont remonté **39 constats**, tous corrigés (deux reportés d’une étape à la suivante, puis corrigés), dont plusieurs pertes de données possibles (écriture d'un board dans le fichier d'un autre, index corrompu faisant disparaître des boards, undo restaurant un état périmé, quota bloquant toutes les actions). Chaque correctif a été validé par **mutation inverse** ; plusieurs tests qui passaient sur du code faux ont été rendus discriminants. Rendu, focus et ARIA vérifiés sur la vraie page (Brave headless, profil jetable).
-- **Tests** : 76 → 210.
+- **Audit d'ensemble avant publication** : une relecture du diff cumulé v1.1.2 → v1.2.0 (personne ne l'avait relu d'un seul tenant) et 25 scénarios en navigateur réel (mise à jour v1.1.2 → v1.2.0 puis retour arrière sur le même profil, démarrage à froid sur un board secondaire, deux vrais onglets, vrai glisser-déposer, thème sombre). Correctifs :
+  - **Bandeau « Vos données ont disparu — Restaurer ? »** : la décision est désormais **persistée** avec le handle (IndexedDB). Avant, un aller-retour de board — ou, déjà en v1.1.2, une modification suivie d'un rechargement — faisait disparaître le bandeau, et la sauvegarde suivante **écrasait le fichier, seule copie restante**. La puce `💾 Réactiver` ne lève plus ce bandeau (même défaut, pré-existant).
+  - **Décomposition IA** terminée après un changement de board : résultat ignoré avec un message, au lieu de remplacer la liste « IA … » du board d'arrivée.
+  - **Changement de board** : l'écran bascule avant le rattachement du fichier compagnon (lecture IndexedDB jusqu'à 8 s), plus de fenêtre où l'ancien board restait affiché sur les données du nouveau.
+  - **Faux « Recharger ? »** au retour sur un board dont le fichier a seulement été « touché » par un client de synchronisation : le contenu est comparé, comme en session (régression de la correction v1.1.2).
+  - **« Ouvrir un fichier existant… »** pendant qu'un autre onglet supprime le board : rien n'est importé dans le board principal, son fichier n'est pas remplacé.
+  - **Réglages modifiés dans un autre onglet** (streak, seuil) : appliqués sans recharger, piles undo neutralisées.
+  - **Synchro en attente puis changement de board** : n'efface plus l'historique d'annulation du board d'arrivée.
+  - Valeurs de streak neutralisées dans les piles undo : JSON valide (un retour à la v1.1.2 ne remet plus le streak à zéro) ; import sur un board secondaire : jamais de réécriture du streak global ; service worker : `index.html` mis en cache en contournant le cache HTTP (`cache: 'reload'`).
+- **Tests** : 76 → 229 ; scénarios navigateur réel : 25/25.
 - **Documentation** : historique déplacé d'`AGENTS.md` vers `CHANGELOG.md` ; roadmap réordonnée (traduction, mode focus, minuteur, son, LM Studio, checklist de distribution) ; référence technique **Multiboard** dans `AGENTS.md`.
 - **Service worker** : cache `kanbanjs-v6` → `v7`. `VERSION` 1.2.0.
 

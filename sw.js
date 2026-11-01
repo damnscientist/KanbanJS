@@ -1,7 +1,7 @@
 const CACHE = 'kanbanjs-v7';
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.add('./')));
+  e.waitUntil(caches.open(CACHE).then(c => c.add(new Request('./', { cache: 'reload' }))));
   self.skipWaiting();
 });
 

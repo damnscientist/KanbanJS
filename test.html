@@ -1489,6 +1489,184 @@ async function run() {
     } catch (_) {}
   }
 
+  // ── 38. Audit d'ensemble v1.2.0 ──
+  const a38 = [];
+  const streak38 = await send('getStreak');
+  try {
+    const d = frame.contentDocument;
+    const w = frame.contentWindow;
+    const tick = (ms = 120) => new Promise(r => setTimeout(r, ms));
+    await send('appSwitch', { id: 'main' });
+    const Y = await send('appCreateBoard', { name: 'Audit Y' });
+    a38.push(Y.id);
+
+    // #1 — décision « restaurer » conservée au changement de board, et Réactiver ne l'écrase pas
+    await send('autoSaveMock', { mode: 'granted', name: 'r.json', keep: true });
+    await send('autoSaveFlush');
+    const fileR = await send('autoSaveFile', { name: 'r.json' });
+    await send('rawRemove', { key: 'kanbanjs:state' });
+    await send('rawRemove', { key: 'kanbanjs:state.bak' });
+    await send('reload');
+    assert('Perte des données : bandeau « restaurer » levé et mémorisé',
+      (await send('autoSaveRebind')) === 'restore' && (await send('autoSaveRecordPending', { id: 'main' })) === 'restore');
+    const l0 = await send('getLists');
+    await send('createCard', { listId: l0[0].id, text: 'écrite pendant le bandeau' });
+    await send('appSwitch', { id: Y.id });
+    await send('appSwitch', { id: 'main' });
+    assert('Aller-retour de board après modification : le bandeau « restaurer » revient',
+      (await send('autoSavePending')) === 'restore');
+    await send('autoSaveResume');
+    assert('Réactiver pendant le bandeau « restaurer » : bandeau conservé, fichier intact',
+      (await send('autoSavePending')) === 'restore' && (await send('autoSaveFile', { name: 'r.json' })) === fileR);
+    await new Promise(r => setTimeout(r, 1000));
+    assert('Bandeau « restaurer » : aucune écriture différée ne touche le fichier',
+      (await send('autoSaveFile', { name: 'r.json' })) === fileR);
+    assert('Restaurer : le board revient du fichier, la décision est effacée',
+      (await send('autoSaveRestore')) === true && (await send('autoSaveRecordPending', { id: 'main' })) === null
+        && !(await send('getBoardCards')).some(c => c.text === 'écrite pendant le bandeau'));
+    await send('rebuild');
+
+    // #4 — pas de faux « Recharger ? » au retour sur un board dont le fichier a seulement été « touché »
+    await send('appSwitch', { id: Y.id });
+    await send('autoSaveMock', { mode: 'granted', name: 'y.json', keep: true });
+    await send('autoSaveFlush');
+    await send('autoSaveSetFile', { name: 'y.json', text: await send('autoSaveFile', { name: 'y.json' }), modified: Date.now() + 60000 });
+    await send('appSwitch', { id: 'main' });
+    await send('appSwitch', { id: Y.id });
+    assert('Retour sur un board : fichier « touché » au contenu identique → pas de bandeau', (await send('autoSavePending')) === null);
+    await send('autoSaveSetFile', { name: 'y.json', text: '{"autre":1}', modified: Date.now() + 120000 });
+    await send('appSwitch', { id: 'main' });
+    await send('appSwitch', { id: Y.id });
+    assert('Retour sur un board : fichier réellement modifié ailleurs → bandeau « Recharger ? »', (await send('autoSavePending')) === 'reload');
+    await send('autoSaveDismiss');
+    await send('autoSaveFlush');
+
+    // #3 — l'écran change de board avant la fin du rattachement du fichier
+    await send('appSwitch', { id: 'main' });
+    await send('autoSaveSlowStore', { ms: 700 });
+    const sw = send('appSwitch', { id: Y.id }, 8000);
+    await tick(300);
+    assert('Changement de board : l’écran affiche le nouveau board sans attendre le fichier compagnon',
+      d.title.includes('Audit Y'), d.title);
+    await sw;
+    await send('autoSaveSlowStore', { ms: 0 });
+
+    // #7 — une synchro en attente ne purge pas l'historique du board d'arrivée
+    const yl = await send('getLists');
+    await send('mutCreateCard', { listId: yl[0].id, text: 'Y-undo' });
+    const yUndo = await send('undoSize');
+    await send('appSwitch', { id: 'main' });
+    const ml = await send('getLists');
+    const mk = await send('mutCreateCard', { listId: ml[0].id, text: 'main-undo' });
+    await send('storageEvent', { key: 'kanbanjs:state' });
+    await send('appSwitch', { id: Y.id });
+    await tick(600);
+    assert('Synchro en attente puis changement : l’historique du board d’arrivée est intact',
+      (await send('undoSize')) === yUndo, [yUndo, await send('undoSize')]);
+    assert('Synchro en attente puis changement : l’historique périmé du board quitté est purgé',
+      (await send('sessionGet', { key: 'kanbanjs:undo' })) === null);
+
+    // #6 — réglages du board modifiés dans un autre onglet
+    await send('setStreak', { streak: 3, lastDate: '2000-01-01', todayCount: 1, todayDate: '2000-01-01' });
+    await send('mutCreateCard', { listId: yl[0].id, text: 'Y-undo-2' });
+    const idx = JSON.parse(await send('rawGet', { key: 'kanbanjs:boards' }));
+    idx.find(b => b.id === Y.id).streak = true;
+    idx.find(b => b.id === Y.id).staleDays = 1;
+    const yc = await send('createCard', { listId: yl[0].id, text: 'Y-ancienne' });
+    await send('setNotesUpdatedAt', { id: yc.id, iso: new Date(Date.now() - 5 * 86400000).toISOString() });
+    await send('rebuild');
+    await send('rawSet', { key: 'kanbanjs:boards', value: JSON.stringify(idx) });
+    await send('storageEvent', { key: 'kanbanjs:boards' });
+    await tick(200);
+    const ycEl = d.querySelector('#board .card[data-id="' + yc.id + '"]');
+    assert('Seuil modifié dans un autre onglet : appliqué sans recharger', ycEl && ycEl.classList.contains('card-stale'));
+    await send('setStreak', { streak: 7, lastDate: '2000-01-02', todayCount: 1, todayDate: '2000-01-02' });
+    await send('undo');
+    assert('« Compte pour le streak » coché dans un autre onglet : un undo ne restaure pas un streak périmé',
+      (await send('getStreak')).streak === 7);
+    const uks = JSON.parse(await send('sessionGet', { key: 'kanbanjs:undo-streak:' + Y.id }) || '[]');
+    assert('Valeurs neutralisées : JSON de streak valide (sûr en cas de retour à la v1.1.2)',
+      uks.length > 0 && uks.every(v => { try { const o = JSON.parse(v); return o.skip === true && typeof o.streak === 'number'; } catch (_) { return false; } }), uks);
+
+    // Remarque — un import sur un board secondaire ne réécrit jamais le streak global
+    const expY = JSON.parse(await send('export'));
+    await send('import', { json: JSON.stringify({ state: expY.state, streak: JSON.stringify({ streak: 99, lastDate: '2020-01-01', todayCount: 0, todayDate: '2020-01-01' }) }) });
+    assert('Import sur un board secondaire (même compté) : streak global intact', (await send('getStreak')).streak === 7);
+
+    // #5 — board supprimé ailleurs pendant un « Ouvrir un fichier existant… »
+    await send('appSwitch', { id: 'main' });
+    const mainName = await send('autoSaveStoredName', { id: 'main' });
+    const mainCount = await send('cardCount');
+    const Z = await send('appCreateBoard', { name: 'Audit Z' });
+    a38.push(Z.id);
+    await send('appSwitch', { id: Z.id });
+    const zText = await send('export');
+    await Promise.all([
+      send('autoSaveAttachWith', { text: zText, delay: 400 }, 8000),
+      (async () => {
+        await tick(120);
+        const ix = JSON.parse(await send('rawGet', { key: 'kanbanjs:boards' })).filter(b => b.id !== Z.id);
+        await send('rawSet', { key: 'kanbanjs:boards', value: JSON.stringify(ix) });
+        for (const sfx of ['', '.bak']) await send('rawRemove', { key: 'kanbanjs:state:' + Z.id + sfx });
+        await send('reload');
+      })(),
+    ]);
+    assert('Board supprimé pendant « Ouvrir un fichier » : rien importé dans le board principal',
+      (await send('boardActive')) === 'main' && (await send('cardCount')) === mainCount);
+    assert('… et le fichier du board principal n’est pas remplacé', (await send('autoSaveStoredName', { id: 'main' })) === mainName, mainName);
+    a38.splice(a38.indexOf(Z.id), 1);
+    await send('autoSaveForget', { id: Z.id });
+    await send('rebuild');
+
+    // #2 — décomposition IA terminée après un changement de board
+    const cfgBefore = w.localStorage.getItem('kanbanjs:config');
+    const realFetch = w.fetch;
+    w.localStorage.setItem('kanbanjs:config', JSON.stringify({ provider: 'openai', endpoint: 'http://ia.invalid/v1', apiKey: 'k', model: 'm' }));
+    w.fetch = async () => {
+      await new Promise(r => setTimeout(r, 600));
+      const body = JSON.stringify({ choices: [{ message: { content: '["étape 1","étape 2"]' } }], usage: { prompt_tokens: 1, completion_tokens: 2 } });
+      return { ok: true, status: 200, statusText: 'OK', text: async () => body };
+    };
+    try {
+      await send('appSwitch', { id: 'main' });
+      const listsBefore = (await send('getLists')).length;
+      d.getElementById('decomposeFab').click(); await tick();
+      d.getElementById('decomposeInput').value = 'Ranger le garage';
+      d.getElementById('decomposeBtn').click(); await tick(100);
+      d.getElementById('decomposeModalClose').click(); await tick(50);
+      await send('appSwitch', { id: Y.id });
+      await tick(900);
+      const yTitles = (await send('getLists')).map(l => l.title);
+      assert('IA terminée après un changement de board : rien n’est créé dans le board d’arrivée',
+        !yTitles.some(t => t.startsWith('IA ')) && d.getElementById('headerInfo').textContent.includes('board a changé'), yTitles);
+      await send('appSwitch', { id: 'main' });
+      assert('… ni dans le board de départ', (await send('getLists')).length === listsBefore);
+
+      d.getElementById('decomposeFab').click(); await tick();
+      d.getElementById('decomposeInput').value = 'Ranger le garage';
+      d.getElementById('decomposeBtn').click();
+      await tick(1000);
+      const ia = (await send('getLists')).find(l => l.title.startsWith('IA '));
+      assert('IA sans changement de board : la liste est bien créée', !!ia);
+      if (ia) await send('deleteList', { id: ia.id });
+      await send('rebuild');
+    } finally {
+      w.fetch = realFetch;
+      if (cfgBefore === null) w.localStorage.removeItem('kanbanjs:config'); else w.localStorage.setItem('kanbanjs:config', cfgBefore);
+      d.getElementById('decomposeModal').classList.remove('open');
+    }
+    for (const c of await send('getBoardCards')) if (c.id === mk.id) await send('deleteCard', { id: c.id });
+  } catch (e) {
+    assert('Audit d’ensemble', false, e.message);
+  } finally {
+    try {
+      await send('autoSaveSlowStore', { ms: 0 });
+      await send('appSwitch', { id: 'main' });
+      for (const id of a38) await send('appDeleteBoard', { id });
+      await send('setStreak', streak38);
+    } catch (_) {}
+  }
+
   // ── Résumé ──────────────────────────────────────────────────
   const total = pass + fail;
   const summary = document.createElement('div');

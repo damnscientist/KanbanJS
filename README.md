@@ -92,7 +92,7 @@ Le projet est un fichier unique, sans dépendance ni bundler. Pour lancer les te
 python3 -m http.server 8000
 ```
 
-Puis ouvrez [http://localhost:8000/test.html](http://localhost:8000/test.html) (210 tests via iframe + postMessage : données, sauvegarde, multiboard, interface).
+Puis ouvrez [http://localhost:8000/test.html](http://localhost:8000/test.html) (229 tests via iframe + postMessage : données, sauvegarde, multiboard, interface).
 
 L'historique des versions est dans [CHANGELOG.md](CHANGELOG.md).
 
