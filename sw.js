@@ -1,4 +1,4 @@
-const CACHE = 'kanbanjs-v8';
+const CACHE = 'kanbanjs-v9';
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.add(new Request('./', { cache: 'reload' }))));

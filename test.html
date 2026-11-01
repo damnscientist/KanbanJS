@@ -1880,6 +1880,79 @@ async function run() {
     }
   }
 
+  // ── 41. Import JSON par le bouton : annulable en une fois ──
+  {
+    const d = frame.contentDocument;
+    const w = frame.contentWindow;
+    const tick = (ms = 150) => new Promise(r => setTimeout(r, ms));
+    const realConfirm = w.confirm;
+    const streak41 = await send('getStreak');
+    const created41 = [];
+    try {
+      await send('appSwitch', { id: 'main' });
+      w.confirm = () => true;
+      const ml = await send('getLists');
+      created41.push((await send('mutCreateCard', { listId: ml[0].id, text: 'avant import' })).id);
+      await send('setStreak', { streak: 4, lastDate: '2000-01-01', todayCount: 1, todayDate: '2000-01-01' });
+      const before = await send('rawGet', { key: 'kanbanjs:state' });
+      const exp = JSON.parse(await send('export'));
+      exp.state.board.name = 'Board importé';
+      exp.state.cards = exp.state.cards.filter(c => c.text !== 'avant import');
+      exp.streak = JSON.stringify({ streak: 11, lastDate: '2000-01-02', todayCount: 0, todayDate: '2000-01-02' });
+      const input = d.getElementById('importFile');
+      const dt = new w.DataTransfer();
+      dt.items.add(new w.File([JSON.stringify(exp)], 'import.json', { type: 'application/json' }));
+      input.files = dt.files;
+      input.dispatchEvent(new w.Event('change', { bubbles: true }));
+      await tick(500);
+      assert('Import par le bouton : board remplacé', (await send('getBoard')).name === 'Board importé' && (await send('getStreak')).streak === 11);
+      await send('undo');
+      assert('u juste après un import : annule exactement l’import (board et streak d’avant)',
+        (await send('rawGet', { key: 'kanbanjs:state' })) === before && (await send('getStreak')).streak === 4);
+      assert('… sans annuler l’action précédente', (await send('getBoardCards')).some(c => c.text === 'avant import'));
+
+      const importFile = async json => {
+        const dt2 = new w.DataTransfer();
+        dt2.items.add(new w.File([json], 'import.json', { type: 'application/json' }));
+        input.files = dt2.files;
+        input.dispatchEvent(new w.Event('change', { bubbles: true }));
+        await tick(500);
+      };
+      const alerts = [];
+      const realAlert = w.alert;
+      w.alert = m => alerts.push(m);
+      try {
+        const undoBefore = await send('undoSize');
+        const bad = JSON.parse(await send('export'));
+        bad.state.lists = [null];
+        await importFile(JSON.stringify(bad));
+        assert('Import refusé par la validation complète : alerte, aucun instantané parasite',
+          alerts.some(m => m.includes('Fichier invalide')) && (await send('undoSize')) === undoBefore
+            && (await send('rawGet', { key: 'kanbanjs:state' })) === before, alerts);
+      } finally { w.alert = realAlert; }
+
+      const big = JSON.parse(await send('export'));
+      big.state.board.name = 'Gros board';
+      big.state.cards.push({ id: '_big', listId: big.state.lists[0].id, text: 'Gros', position: 999, notes: 'x'.repeat(250000), tags: [], doneAt: null });
+      await importFile(JSON.stringify(big));
+      assert('Import d’un gros board : appliqué, annulable', (await send('getBoard')).name === 'Gros board' && (await send('undoSize')) >= 1);
+      const bl = await send('getLists');
+      created41.push((await send('mutCreateCard', { listId: bl[0].id, text: 'après gros import' })).id);
+      assert('Board > 200 ko : instantané sauté → historique vidé (un u ne peut plus sauter par-dessus des actions)',
+        (await send('undoSize')) === 0);
+      await send('import', { json: before });
+    } catch (e) {
+      assert('Import annulable', false, e.message);
+    } finally {
+      w.confirm = realConfirm;
+      try {
+        for (const id of created41) await send('deleteCard', { id });
+        await send('setStreak', streak41);
+        await send('rebuild');
+      } catch (_) {}
+    }
+  }
+
   // ── Résumé ──────────────────────────────────────────────────
   const total = pass + fail;
   const summary = document.createElement('div');

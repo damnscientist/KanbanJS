@@ -2,6 +2,15 @@
 
 Historique des versions, de la plus récente à la plus ancienne. Le contexte de développement (architecture, conventions, roadmap) est dans [`AGENTS.md`](AGENTS.md).
 
+## 2026-11-01 — Import annulable (v1.2.2)
+
+- **Import JSON annulable** : l'import par le bouton ↑ passe désormais par `mutate()`. Un `u` juste après un import annule exactement l'import (board et, sur le board principal, streak), sans emporter l'action précédente. Avant, aucun instantané n'était pris : `u` revenait à l'état d'avant la dernière action *précédant* l'import, annulant les deux en silence.
+- **Validation complète avant l'import** : le bouton utilise `DB.canImport()` (même validation que `importJSON`) avant de prendre l'instantané. Un fichier structurellement invalide (`lists: [null]`…) est refusé sans laisser d'instantané parasite ni vider le redo.
+- **Board > 200 ko (pré-existant)** : quand l'instantané undo est sauté pour cause de taille, l'historique du board est vidé. Avant, il était conservé, et un `u` sautait par-dessus les actions faites depuis — plus probable après l'import d'un gros fichier.
+- **Vérifié en navigateur réel** (vrai sélecteur de fichier, vraies boîtes de confirmation) : import sur le board principal et sur un board secondaire (seul le board actif change, streak global intact sur un secondaire), ancien format brut accepté, fichier invalide et confirmation refusée sans effet, ré-import du même fichier, persistance après rechargement, `u` après import.
+- **Relecture en contexte neuf** du changement, avant commit.
+- **Tests** : 253 → 259. **Service worker** : cache `kanbanjs-v8` → `v9`. `VERSION` 1.2.2.
+
 ## 2026-11-01 — Prompt de décomposition v2 (v1.2.1)
 
 - **Moins de cartes, mieux ciblées** : 5 à 12 micro-actions centrées sur les 15 à 20 premières minutes (au lieu de 6 à 35 pour toute la tâche — un mur de 35 cartes recréait le blocage que l'outil doit casser). Pour une grosse tâche, la dernière carte est « Décomposer la suite » : on décompose au fur et à mesure.

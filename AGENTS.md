@@ -30,7 +30,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Undo/redo 30 niveaux avec streak synchronisé, reconstruction DOM sans `location.reload()`
 - Parsing robuste du JSON IA (équilibrage bracketing, détection guillemets, strip code fences)
 - Gestion d'erreur complète : bannière `QuotaExceededError`, crash recovery dans `init()`, `AbortController` 60s
-- Tests : 253 tests via iframe/postMessage (`test.html`) — DB, fichier compagnon, multiboard, interface (DOM de l'iframe)
+- Tests : 259 tests via iframe/postMessage (`test.html`) — DB, fichier compagnon, multiboard, interface (DOM de l'iframe)
 
 **UX & design**
 - Raccourcis clavier vim-like complets : navigation h/l/j/k, actions carte/liste, recherche `Ctrl+K`, undo/redo
@@ -65,7 +65,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Thème jour/nuit persisté dans 3 clés (`kanbanjs:theme-mode`, `kanbanjs:theme-dark`, `kanbanjs:theme-light`)
 - Sélecteur de thème dans la modale Configuration (onglet "Thèmes") : 4 sombres, 4 clairs
 - Bouton reset (remet le **board actif** à son gabarit, reconstruction DOM)
-- Export / Import JSON du board actif (boutons ↓ ↑ dans le header ; fichier nommé d'après le board pour les boards secondaires)
+- Export / Import JSON du board actif (boutons ↓ ↑ dans le header ; fichier nommé d'après le board pour les boards secondaires). L'import est validé par `DB.canImport()` puis passe par `mutate()` : annulable par `u`. La remise à zéro (↺), elle, reste volontairement non annulable
 - Indicateur de progression : barre + pourcentage dans le header (`3/8`, `38%`)
 
 ### Clavier
@@ -203,7 +203,7 @@ Référence technique, à lire avant de toucher à `DB`, `AutoSave`, aux piles u
 
 ### Limites techniques
 - **Ouverture en `file://`** : l'API IA est bloquée par CORS. L'app fonctionne en `file://` pour le board, les templates et la persistance, mais les appels IA nécessitent d'être servi en `http(s)` — d'où la publication GitHub Pages.
-- **Service worker (`sw.js`)** : cache-first, chemins relatifs (`'./'`), guard non-GET (les POST IA ne doivent pas passer par la Cache API). Enregistré dans `index.html` uniquement en `https:`. **Toute modification publiée d'`index.html` ou `sw.js` doit bumper le nom de cache (`kanbanjs-v1` → `v2` → `v3` → `v4` → `v5` → `v6` → `v7` → `v8`)**, sinon les visiteurs gardent l'ancienne version.
+- **Service worker (`sw.js`)** : cache-first, chemins relatifs (`'./'`), guard non-GET (les POST IA ne doivent pas passer par la Cache API). Enregistré dans `index.html` uniquement en `https:`. **Toute modification publiée d'`index.html` ou `sw.js` doit bumper le nom de cache (`kanbanjs-v1` → `v2` → `v3` → `v4` → `v5` → `v6` → `v7` → `v8` → `v9`)**, sinon les visiteurs gardent l'ancienne version.
 - **Fournisseur IA centralisé** : tout le branchement fournisseur est dans `queryAI` (switch provider → body/headers/parsing)
 
 ### Déploiement

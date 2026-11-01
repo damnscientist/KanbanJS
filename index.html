@@ -2035,6 +2035,11 @@ const DB = (() => {
       if (_meta().streak) { try { streak = localStorage.getItem(STREAK_KEY); } catch (_) {} }
       return JSON.stringify({ state: _state, streak });
     },
+    canImport(json) {
+      let parsed;
+      try { parsed = JSON.parse(json); } catch (_) { return false; }
+      return _isValidState(parsed) || _isValidState(parsed && parsed.state);
+    },
     async importJSON(json) {
       let parsed;
       try { parsed = JSON.parse(json); } catch (_) { throw new Error('JSON invalide.'); }
@@ -3265,6 +3270,7 @@ const App = (() => {
     _stacksOk();
     const json = await DB.exportJSON();
     if (json.length > 200_000) {
+      _saveStack(UK, []); _saveStack(UKS, []); _saveStack(RK, []); _saveStack(RKS, []);
       if (!_snapshotSkipped) {
         _snapshotSkipped = true;
         flashMessage(headerInfoEl, '\u26A0 Undo d\u00E9sactiv\u00E9 (board > 200 ko)', '', 5000);
@@ -4107,10 +4113,8 @@ const App = (() => {
       const reader = new FileReader();
       reader.onload = async () => {
         try {
-          const data = JSON.parse(reader.result);
-          const hasBoard = (data.board && Array.isArray(data.lists) && Array.isArray(data.cards))
-            || (data.state && data.state.board && Array.isArray(data.state.lists) && Array.isArray(data.state.cards));
-          if (!hasBoard) {
+          JSON.parse(reader.result);
+          if (!DB.canImport(reader.result)) {
             alert('Fichier invalide : structure JSON attendue (board, lists, cards).');
             return;
           }
@@ -4118,7 +4122,7 @@ const App = (() => {
           try {
             const sizeBytes = new Blob([reader.result]).size;
             if (sizeBytes > 4_500_000 && !confirm(`Le fichier fait ${Math.round(sizeBytes/1024/1024*10)/10} MB. L'import peut échouer. Continuer ?`)) return;
-            await DB.importJSON(reader.result);
+            await mutate(() => DB.importJSON(reader.result));
           } catch (e) {
             if (e.name === 'QuotaExceededError' || e.message.includes('stockage')) {
               alert('Espace de stockage saturé. Supprimez des données avant d\u2019importer.');
