@@ -927,6 +927,194 @@ async function run() {
     } catch (_) {}
   }
 
+  // ── 33. Multiboard — App : changement, undo par board, gamification ──
+  let boardC = null;
+  const streakSaved = await send('getStreak');
+  try {
+    await send('boardUse', { id: 'main' });
+    await send('autoSaveMock', { mode: 'granted', name: 'main.json' });
+    await send('autoSaveFlush');
+    const mainLists = await send('getLists');
+    await send('mutCreateCard', { listId: mainLists[0].id, text: 'U-main' });
+    const mainUndo = await send('undoSize');
+
+    boardC = await send('appCreateBoard', { name: '  Suivi équipe  ' });
+    assert('Création via App : nom nettoyé, board actif inchangé',
+      boardC.name === 'Suivi équipe' && (await send('boardActive')) === 'main');
+
+    await send('openForm', { open: true });
+    assert('Changement refusé pendant une édition',
+      (await send('appSwitch', { id: boardC.id })) === false && (await send('boardActive')) === 'main');
+    await send('openForm', { open: false });
+
+    assert('Changement via App', (await send('appSwitch', { id: boardC.id })) === true
+      && (await send('boardActive')) === boardC.id);
+    const h = await send('headerState');
+    assert('Board d’arrivée rendu (titre de la page)', h.title.includes('Suivi équipe'), h.title);
+    assert('Board d’arrivée : undo vide (pile propre au board)', (await send('undoSize')) === 0);
+    assert('Board d’arrivée : date de première visite posée pour le rappel d’export',
+      !!(await send('backupInfo')).firstSeen);
+
+    const cLists = await send('getLists');
+    await send('mutCreateCard', { listId: cLists[0].id, text: 'C1' });
+    await send('undo');
+    assert('Undo sur C : annule la création sur C', (await send('cardCount')) === 0);
+
+    await send('appSwitch', { id: 'main' });
+    assert('Retour sur main : sa pile undo est retrouvée', (await send('undoSize')) === mainUndo);
+    await send('undo');
+    assert('Undo sur main : annule sa propre création, C intact',
+      !(await send('getBoardCards')).some(c => c.text === 'U-main'));
+    await send('appSwitch', { id: boardC.id });
+    assert('C intact après l’undo sur main', (await send('cardCount')) === 0
+      && (await send('getLists')).length === 3);
+
+    // Filet : changement de board hors App (piles non rebindées) → undo refusé
+    await send('appSwitch', { id: 'main' });
+    await send('mutCreateCard', { listId: mainLists[0].id, text: 'U-filet' });
+    await send('boardUse', { id: boardC.id });
+    await send('undo');
+    assert('Filet : un undo après un changement hors App ne restaure pas main dans C',
+      (await send('getLists')).length === 3 && (await send('cardCount')) === 0);
+    await send('appSwitch', { id: 'main' });
+
+    // Gamification
+    const s0 = { streak: 4, lastDate: '2000-01-01', todayCount: 0, todayDate: '2000-01-01' };
+    await send('setStreak', s0);
+    await send('appSwitch', { id: boardC.id });
+    await send('updateStreak', { n: 3 });
+    assert('Board sans streak : une complétion ne touche pas le streak',
+      JSON.stringify(await send('getStreak')) === JSON.stringify(s0));
+    await send('rebuild');
+    const hc = await send('headerState');
+    assert('Board sans streak : ni badge, ni compteur du jour, ni citation ; progression visible',
+      !hc.badge && !hc.today && hc.quote === '' && /%$/.test(hc.pct), hc);
+
+    await send('setStreak', s0);
+    await send('mutCreateCard', { listId: cLists[0].id, text: 'C2' });
+    await send('setStreak', { streak: 9, lastDate: '2000-01-02', todayCount: 1, todayDate: '2000-01-02' });
+    await send('undo');
+    assert('Board sans streak : un undo ne réécrit pas le streak global',
+      (await send('getStreak')).streak === 9);
+
+    await send('appSwitch', { id: 'main' });
+    await send('updateStreak', { n: 1 });
+    const sMain = await send('getStreak');
+    await send('rebuild');
+    const hm = await send('headerState');
+    assert('Board principal : la complétion compte et le badge s’affiche',
+      sMain.todayCount >= 1 && hm.badge && hm.today && hm.quote !== '', hm);
+
+    // Suppression via App
+    await send('appSwitch', { id: boardC.id });
+    await send('autoSaveMock', { mode: 'granted', name: 'c.json', keep: true });
+    await send('autoSaveFlush');
+    await send('mutCreateCard', { listId: cLists[0].id, text: 'C3' });
+    assert('Suppression via App : refusée pour le board actif',
+      (await send('appDeleteBoard', { id: boardC.id })) === false);
+    await send('appSwitch', { id: 'main' });
+    assert('Suppression via App : acceptée depuis un autre board',
+      (await send('appDeleteBoard', { id: boardC.id })) === true);
+    assert('Suppression via App : handle et piles undo du board oubliés',
+      (await send('autoSaveStored', { id: boardC.id })) === false
+        && (await send('sessionGet', { key: 'kanbanjs:undo:' + boardC.id })) === null);
+    boardC = null;
+  } catch (e) {
+    assert('Multiboard — App', false, e.message);
+  } finally {
+    try {
+      await send('appSwitch', { id: 'main' });
+      if (boardC) await send('appDeleteBoard', { id: boardC.id });
+      for (const c of await send('getBoardCards')) if (c.text === 'U-filet') await send('deleteCard', { id: c.id });
+      await send('setStreak', streakSaved);
+    } catch (_) {}
+  }
+
+  // ── 34. Multiboard — App : relecture (sync, streak multi-boards, quota, confettis) ──
+  let boardD = null, boardE = null;
+  const streakSaved34 = await send('getStreak');
+  const created34 = [];
+  try {
+    await send('appSwitch', { id: 'main' });
+    const ml = await send('getLists');
+    const mk = async text => { const c = await send('mutCreateCard', { listId: ml[0].id, text }); created34.push(c.id); return c; };
+    boardD = await send('appCreateBoard', { name: 'D' });
+
+    await mk('purge-distante');
+    await send('appSwitch', { id: boardD.id });
+    await send('storageEvent', { key: 'kanbanjs:state' });
+    await send('appSwitch', { id: 'main' });
+    assert('Board non actif modifié dans un autre onglet : ses piles undo sont purgées',
+      (await send('undoSize')) === 0);
+
+    await send('appSwitch', { id: boardD.id });
+    const dl = await send('getLists');
+    await send('mutCreateCard', { listId: dl[0].id, text: 'D1' });
+    await send('storageEvent', { key: 'kanbanjs:streak' });
+    await new Promise(r => setTimeout(r, 400));
+    assert('Board sans streak : un changement de streak ailleurs ne purge pas son historique',
+      (await send('undoSize')) === 1);
+
+    await send('mutCreateCard', { listId: dl[0].id, text: 'D2' });
+    await send('setStreak', { streak: 2, lastDate: '2000-01-05', todayCount: 1, todayDate: '2000-01-05' });
+    await send('appSetMeta', { patch: { streak: true } });
+    await send('undo');
+    assert('Bascule « compte pour le streak » : les valeurs capturées avant ne sont pas restaurées',
+      (await send('getStreak')).streak === 2);
+
+    await send('appSwitch', { id: 'main' });
+    const sX = { streak: 5, lastDate: '2000-01-01', todayCount: 1, todayDate: '2000-01-01' };
+    await send('setStreak', sX);
+    await mk('streak-normal');
+    await send('setStreak', { streak: 6, lastDate: '2000-01-02', todayCount: 1, todayDate: '2000-01-02' });
+    await send('appSwitch', { id: boardD.id });
+    await send('appSwitch', { id: 'main' });
+    await send('undo');
+    assert('Aller-retour sans complétion ailleurs : l\u2019undo restaure toujours le streak',
+      (await send('getStreak')).streak === 5);
+
+    await mk('streak-deux-boards');
+    await send('appSwitch', { id: boardD.id });
+    await send('setStreak', { streak: 8, lastDate: '2000-01-03', todayCount: 3, todayDate: '2000-01-03' });
+    await send('appSwitch', { id: 'main' });
+    await send('undo');
+    assert('Deux boards comptent : un undo sur l\u2019un n\u2019efface pas la progression faite sur l\u2019autre',
+      (await send('getStreak')).streak === 8);
+
+    boardE = await send('appCreateBoard', { name: 'E' });
+    await send('appSwitch', { id: boardE.id });
+    const el = await send('getLists');
+    const ec = await send('createCard', { listId: el[0].id, text: 'E1' });
+    await send('refreshHeader');
+    await send('moveCard', { cardId: ec.id, toListId: el[2].id, newPos: 0 });
+    await send('refreshHeader');
+    assert('Board sans streak : pas de confettis à 100 %', (await send('confetti')) === false);
+    await send('appSetMeta', { patch: { streak: true } });
+    await send('moveCard', { cardId: ec.id, toListId: el[0].id, newPos: 0 });
+    await send('refreshHeader');
+    await send('moveCard', { cardId: ec.id, toListId: el[2].id, newPos: 0 });
+    await send('refreshHeader');
+    assert('Board avec streak : confettis à 100 %', (await send('confetti')) === true);
+
+    await send('appSwitch', { id: 'main' });
+    const junk = await send('fillSession');
+    const q = await mk('malgré le quota');
+    assert('Quota sessionStorage saturé : l\u2019action aboutit quand même',
+      junk > 0 && (await send('getBoardCards')).some(c => c.id === q.id), 'junk=' + junk);
+    assert('Quota sessionStorage saturé : les piles des autres boards sont libérées',
+      (await send('junkLeft')) === 0);
+  } catch (e) {
+    assert('Multiboard — App (relecture)', false, e.message);
+  } finally {
+    try {
+      await send('appSwitch', { id: 'main' });
+      if (boardD) await send('appDeleteBoard', { id: boardD.id });
+      if (boardE) await send('appDeleteBoard', { id: boardE.id });
+      for (const id of created34) await send('deleteCard', { id });
+      await send('setStreak', streakSaved34);
+    } catch (_) {}
+  }
+
   // ── Résumé ──────────────────────────────────────────────────
   const total = pass + fail;
   const summary = document.createElement('div');

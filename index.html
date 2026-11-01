@@ -2771,7 +2771,8 @@ const App = (() => {
     let infoHTML =
       `${lists.length} liste${lists.length !== 1 ? 's' : ''} \u00b7 ${done}/${total} carte${total !== 1 ? 's' : ''}`;
 
-    const s = readStreak();
+    const gamified = DB.countsStreak();
+    const s = gamified ? readStreak() : { streak: 0, lastDate: null, todayCount: 0, todayDate: null };
     const today = dateKey(new Date());
     if (s.todayDate === today && s.todayCount > 0) {
       let emoji;
@@ -2798,7 +2799,7 @@ const App = (() => {
     fill.style.opacity  = pct / 100;
     document.getElementById('progressPct').textContent = pct + '%';
 
-    if (_prevPct < 100 && pct === 100) fireConfetti();
+    if (gamified && _prevPct < 100 && pct === 100) fireConfetti();
     _prevPct = pct;
 
     const badge = document.getElementById('streakBadge');
@@ -2813,7 +2814,9 @@ const App = (() => {
     }
 
     const quoteEl = document.getElementById('boardQuote');
-    if (quoteEl) {
+    if (quoteEl && !gamified) {
+      quoteEl.textContent = '';
+    } else if (quoteEl) {
       quoteEl.textContent = '\uD83C\uDF31 ' + QUOTES[_quoteIdx];
       _quoteIdx = (_quoteIdx + 1) % QUOTES.length;
     }
@@ -2845,6 +2848,8 @@ const App = (() => {
   }
 
   function updateStreak(increment = 1) {
+    requestPersist();
+    if (!DB.countsStreak()) return;
     const s = readStreak();
     const today = dateKey(new Date());
     if (s.todayDate !== today) {
@@ -2862,7 +2867,7 @@ const App = (() => {
   }
 
   function adjustStreak(delta) {
-    if (delta >= 0) return;
+    if (delta >= 0 || !DB.countsStreak()) return;
     const s = readStreak();
     const today = dateKey(new Date());
     if (s.todayDate === today) {
@@ -3099,18 +3104,47 @@ const App = (() => {
 
   // ── Undo / Redo ──────────────────────────────────────────
   const MAX_UNDO = 30;
-  const UK  = 'kanbanjs:undo';
-  const RK  = 'kanbanjs:redo';
-  const UKS = 'kanbanjs:undo-streak';
-  const RKS = 'kanbanjs:redo-streak';
+  let UK, RK, UKS, RKS, _stackBoard;
+  function _stackKeysFor(id) {
+    const sfx = id === DB.MAIN ? '' : ':' + id;
+    return ['kanbanjs:undo' + sfx, 'kanbanjs:redo' + sfx, 'kanbanjs:undo-streak' + sfx, 'kanbanjs:redo-streak' + sfx];
+  }
+  function _bindStacks() {
+    _stackBoard = DB.activeBoard();
+    [UK, RK, UKS, RKS] = _stackKeysFor(_stackBoard);
+  }
+  _bindStacks();
   let _snapshotSkipped = false;
 
   function _loadStack(key) {
     try { return JSON.parse(sessionStorage.getItem(key)) || []; } catch (_) { return []; }
   }
-  function _saveStack(key, arr) { sessionStorage.setItem(key, JSON.stringify(arr)); }
+  function _purgeStacks(keep) {
+    try {
+      const keys = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i) || '';
+        if (/^kanbanjs:(undo|redo)/.test(k) && !(keep && keep.includes(k))) keys.push(k);
+      }
+      for (const k of keys) sessionStorage.removeItem(k);
+    } catch (_) {}
+  }
+
+  function _saveStack(key, arr) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { sessionStorage.setItem(key, JSON.stringify(arr)); return true; }
+      catch (_) {
+        if (attempt === 0) _purgeStacks([UK, RK, UKS, RKS]);
+        else if (arr.length > 1) arr = arr.slice(Math.ceil(arr.length / 2));
+        else break;
+      }
+    }
+    try { sessionStorage.removeItem(key); } catch (_) {}
+    return false;
+  }
 
   async function _snapshot() {
+    _stacksOk();
     const json = await DB.exportJSON();
     if (json.length > 200_000) {
       if (!_snapshotSkipped) {
@@ -3131,9 +3165,34 @@ const App = (() => {
     _saveStack(RKS, []);
   }
 
-  async function mutate(fn) { await _snapshot(); return await fn(); }
+  async function mutate(fn) {
+    try { await _snapshot(); } catch (e) { console.warn('KanbanJS : instantan\u00e9 undo impossible.', e); }
+    return await fn();
+  }
+
+  function _stacksOk() {
+    if (_stackBoard === DB.activeBoard()) return true;
+    _bindStacks();
+    return false;
+  }
+
+  const STREAK_SKIP = '\u0000skip';
+  function _neutralizeStreak(id) {
+    const [, , uks, rks] = _stackKeysFor(id);
+    for (const k of [uks, rks]) {
+      const arr = _loadStack(k);
+      if (arr.length) _saveStack(k, arr.map(() => STREAK_SKIP));
+    }
+  }
+
+  function _restoreStreak(streakJson) {
+    if (!DB.countsStreak() || streakJson === STREAK_SKIP) return;
+    if (streakJson) localStorage.setItem(STREAK_KEY, streakJson);
+    else localStorage.removeItem(STREAK_KEY);
+  }
 
   async function _undo() {
+    if (!_stacksOk()) return;
     const undo  = _loadStack(UK);
     const undoS = _loadStack(UKS);
     if (!undo.length) return;
@@ -3143,9 +3202,7 @@ const App = (() => {
     redoS.push(localStorage.getItem(STREAK_KEY) || null);
     _saveStack(RK, redo);
     _saveStack(RKS, redoS);
-    const streakJson = undoS.pop();
-    if (streakJson) localStorage.setItem(STREAK_KEY, streakJson);
-    else localStorage.removeItem(STREAK_KEY);
+    _restoreStreak(undoS.pop());
     await DB.restoreJSON(undo.pop());
     _saveStack(UK, undo);
     _saveStack(UKS, undoS);
@@ -3153,6 +3210,7 @@ const App = (() => {
   }
 
   async function _redo() {
+    if (!_stacksOk()) return;
     const redo  = _loadStack(RK);
     const redoS = _loadStack(RKS);
     if (!redo.length) return;
@@ -3162,17 +3220,15 @@ const App = (() => {
     undoS.push(localStorage.getItem(STREAK_KEY) || null);
     _saveStack(UK, undo);
     _saveStack(UKS, undoS);
-    const streakJson = redoS.pop();
-    if (streakJson) localStorage.setItem(STREAK_KEY, streakJson);
-    else localStorage.removeItem(STREAK_KEY);
+    _restoreStreak(redoS.pop());
     await DB.restoreJSON(redo.pop());
     _saveStack(RK, redo);
     _saveStack(RKS, redoS);
     await _rebuild();
   }
 
-  function _undoSize() { return _loadStack(UK).length; }
-  function _redoSize() { return _loadStack(RK).length; }
+  function _undoSize() { return _stackBoard === DB.activeBoard() ? _loadStack(UK).length : 0; }
+  function _redoSize() { return _stackBoard === DB.activeBoard() ? _loadStack(RK).length : 0; }
 
   // ── CARD ─────────────────────────────────────────────────
   function buildCard(card, done) {
@@ -5207,7 +5263,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
   }
 
   async function _syncFromStorage() {
-    if (_syncing) {
+    if (_syncing || _switching) {
       _storageTimer = setTimeout(_syncFromStorage, 200);
       return;
     }
@@ -5216,7 +5272,12 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       _saveStack(UK, []); _saveStack(RK, []); _saveStack(UKS, []); _saveStack(RKS, []);
       const before = DB.activeBoard();
       await DB.reload();
-      if (DB.activeBoard() !== before) await AutoSave.switchBoard(async () => {});
+      if (DB.activeBoard() !== before) {
+        await AutoSave.switchBoard(async () => {});
+        _bindStacks();
+        _saveStack(UK, []); _saveStack(RK, []); _saveStack(UKS, []); _saveStack(RKS, []);
+        await _ensureFirstSeen();
+      }
       AutoSave.refreshPending();
       if (_editingActive()) {
         _storageTimer = setTimeout(_syncFromStorage, 200);
@@ -5229,9 +5290,82 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
   }
 
   function _onStorage(e) {
-    if (e.key !== null && e.key !== DB.key() && e.key !== STREAK_KEY) return;
+    if (e.key === null) {
+      _purgeStacks();
+    } else if (e.key === STREAK_KEY) {
+      if (!DB.countsStreak()) return;
+    } else if (e.key === DB.INDEX_KEY) {
+      refreshHeaderInfo();
+      return;
+    } else if (e.key !== DB.key()) {
+      const m = /^kanbanjs:state(?::(.+))?$/.exec(e.key);
+      if (m && !m[1]?.endsWith('.bak')) {
+        const id = m[1] || DB.MAIN;
+        if (id !== DB.activeBoard()) for (const k of _stackKeysFor(id)) { try { sessionStorage.removeItem(k); } catch (_) {} }
+      }
+      return;
+    }
     clearTimeout(_storageTimer);
     _storageTimer = setTimeout(_syncFromStorage, 200);
+  }
+
+  // ── BOARDS ─────────────────────────────────────────────────
+  let _switching = false;
+
+  async function _ensureFirstSeen() {
+    const info = await DB.getBackupInfo();
+    if (!info.firstSeen) { info.firstSeen = dateKey(new Date()); await DB.setBackupInfo(info); }
+  }
+
+  function _streakNow() {
+    try { return localStorage.getItem(STREAK_KEY); } catch (_) { return null; }
+  }
+
+  async function switchBoard(id) {
+    if (id === DB.activeBoard()) return true;
+    if (_switching || _syncing || _editingActive()) return false;
+    _switching = true;
+    const from = DB.activeBoard();
+    try {
+      try { sessionStorage.setItem('kanbanjs:streak-at:' + from, _streakNow() ?? ''); } catch (_) {}
+      try {
+        await AutoSave.switchBoard(() => DB.useBoard(id));
+      } catch (err) {
+        console.warn('KanbanJS : changement de board incomplet.', err);
+      }
+      _bindStacks();
+      const to = DB.activeBoard();
+      if (to === from) return false;
+      let seen = null;
+      try { seen = sessionStorage.getItem('kanbanjs:streak-at:' + to); } catch (_) {}
+      if (seen !== null && seen !== (_streakNow() ?? '')) _neutralizeStreak(to);
+      await _ensureFirstSeen();
+      await _rebuild();
+      await refreshAutoSaveUI();
+      return to === id;
+    } finally {
+      _switching = false;
+    }
+  }
+
+  async function setBoardMeta(patch, id = DB.activeBoard()) {
+    const before = await DB.getBoardMeta(id);
+    const after = await DB.setBoardMeta(patch, id);
+    if (before.streak !== after.streak) _neutralizeStreak(id);
+    if (id === DB.activeBoard()) await refreshHeaderInfo();
+    return after;
+  }
+
+  async function createBoard(name) {
+    return DB.createBoard(String(name || '').trim().slice(0, 200) || 'Nouveau board');
+  }
+
+  async function deleteBoard(id) {
+    if (id === DB.MAIN || id === DB.activeBoard()) return false;
+    if (!(await DB.deleteBoard(id))) return false;
+    await AutoSave.forget(id);
+    for (const k of _stackKeysFor(id)) { try { sessionStorage.removeItem(k); } catch (_) {} }
+    return true;
   }
 
   // ── REBUILD ────────────────────────────────────────────────
@@ -5266,9 +5400,7 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
       window.addEventListener('storage', _onStorage);
       AutoSave.onChange(() => { refreshAutoSaveUI().catch(() => {}); });
       AutoSave.init().then(refreshAutoSaveUI);
-      DB.getBackupInfo().then(info => {
-        if (!info.firstSeen) { info.firstSeen = dateKey(new Date()); return DB.setBackupInfo(info); }
-      }).then(refreshAutoSaveUI).catch(() => {});
+      _ensureFirstSeen().then(refreshAutoSaveUI).catch(() => {});
       refreshAutoSaveUI();
       document.getElementById('helpBtn').addEventListener('click', () => {
         document.querySelector('.cheatsheet-overlay').classList.toggle('open');
@@ -5286,7 +5418,12 @@ SORTIE STRICTE — À RESPECTER ABSOLUMENT:
     }
   }
 
-  return { init, _rebuild, _syncFromStorage, dateKey, backupDue, autosaveUnsupportedMessage };
+  return {
+    init, switchBoard, createBoard, deleteBoard, setBoardMeta,
+    _refreshHeader: refreshHeaderInfo,
+    _rebuild, _syncFromStorage, _mutate: mutate, _undo, _redo, _undoSize, _updateStreak: updateStreak,
+    dateKey, backupDue, autosaveUnsupportedMessage,
+  };
 })();
 
 App.init();
@@ -5328,6 +5465,45 @@ window.__testAPI = (() => {
         case 'autoSaveForget': result = await AutoSave.forget(args.id); break;
         case 'autoSaveForceState': AutoSave._test.forceState(args.state); break;
         case 'syncFromStorage': await App._syncFromStorage(); break;
+        case 'appSwitch':      result = await App.switchBoard(args.id); break;
+        case 'appCreateBoard': result = await App.createBoard(args.name); break;
+        case 'appDeleteBoard': result = await App.deleteBoard(args.id); break;
+        case 'appSetMeta':     result = await App.setBoardMeta(args.patch, args.id); break;
+        case 'refreshHeader':  await App._refreshHeader(); break;
+        case 'confetti':       result = !!document.getElementById('confettiCanvas'); break;
+        case 'storageEvent':   window.dispatchEvent(new StorageEvent('storage', { key: args.key })); break;
+        case 'fillSession': {
+          let n = 0;
+          for (const size of [500000, 20000, 500]) {
+            try { for (let i = 0; i < 400; i++, n++) sessionStorage.setItem('kanbanjs:undo:_junk' + n, 'x'.repeat(size)); } catch (_) {}
+          }
+          result = n;
+          break;
+        }
+        case 'junkLeft': {
+          let n = 0;
+          for (let i = 0; i < sessionStorage.length; i++) if ((sessionStorage.key(i) || '').startsWith('kanbanjs:undo:_junk')) n++;
+          result = n;
+          break;
+        }
+        case 'mutCreateCard':  result = await App._mutate(() => DB.createCard(args.listId, args.text)); break;
+        case 'undo':           await App._undo(); break;
+        case 'redo':           await App._redo(); break;
+        case 'undoSize':       result = App._undoSize(); break;
+        case 'updateStreak':   App._updateStreak(args.n || 1); break;
+        case 'sessionGet':     result = /^kanbanjs:(undo|redo)/.test(args.key) ? sessionStorage.getItem(args.key) : null; break;
+        case 'headerState': {
+          await new Promise(r => setTimeout(r, 120));
+          result = {
+            badge: document.getElementById('streakBadge').classList.contains('show'),
+            today: !!document.querySelector('#headerInfo .today-count'),
+            quote: document.getElementById('boardQuote').textContent,
+            pct: document.getElementById('progressPct').textContent,
+            title: document.title,
+          };
+          break;
+        }
+        case 'openForm':       document.querySelector('.add-list-form').classList.toggle('open', !!args.open); break;
         case 'autoSaveState':  result = AutoSave.status(); break;
         case 'autoSaveFlush':  result = await AutoSave.flush(); break;
         case 'autoSaveRestore': result = await AutoSave.restore(); break;
