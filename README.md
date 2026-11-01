@@ -9,6 +9,8 @@ Face à une corvée qui paraît insurmontable (« ranger mon bureau », « faire
 ## Fonctionnalités
 
 - **Board kanban** : listes et cartes, renommage, réordonnancement par glisser-déposer, repli des listes.
+- **Plusieurs boards** : un board personnel, et autant de boards que vous voulez à côté — par exemple pour suivre les projets d'une équipe. Menu `▾` à côté du nom du board (ou touche `b`) pour changer ou créer ; Configuration → **Boards** pour les réglages. Chaque board a ses listes, son historique d'annulation et son fichier de sauvegarde. Le streak et les confettis restent réservés aux boards que vous choisissez.
+- **Suivi de projet** : une carte = un projet, le suivi se fait dans la note. La touche `i` (ou 📅) ajoute une entrée datée en haut de la note ; une carte dont la note n'a pas bougé depuis 14 jours (réglable par board) s'estompe et affiche `⏳ N j`.
 - **Décomposition IA** : décrivez une corvée, l'IA la découpe en micro-actions dans une liste dédiée. Supporte OpenAI (et compatible), Anthropic, Google Gemini et Ollama (modèles locaux).
 - **Templates intégrés** : 12 corvées universelles (vaisselle, lessive, rangement, courrier, facture, mail, dossier, réunion, RDV médical, départ, boîte mail, fichiers du bureau) prêtes à l'emploi, avec suggestion automatique par correspondance floue — **aucune clé API requise**.
 - **Liste « terminée »** : marquez une liste comme Done, ses cartes se barrent et affichent la date de complétion.
@@ -16,7 +18,7 @@ Face à une corvée qui paraît insurmontable (« ranger mon bureau », « faire
 - **Tags colorés** : chips colorés par nom, recherchables.
 - **Streak & gratification** : compteur de jours consécutifs, compteur du jour, paliers emoji, confettis à 100 %, citations bienveillantes.
 - **8 thèmes** : 4 sombres (Warm Night, Deep Ocean, Forest, Tokyo Night) et 4 clairs (Soft Sand, Mint, Lavender, Tokyo Light), avec mode système.
-- **Undo/redo** : 30 niveaux de snapshots.
+- **Undo/redo** : 30 niveaux de snapshots, par board.
 - **Raccourcis vim-like** : pilotage complet au clavier.
 - **Export / import JSON** : vos données restent à vous, sauvegardables en un fichier.
 - **Persistance robuste** : copie de secours automatique (le board se répare seul si la sauvegarde principale est corrompue), synchronisation entre les onglets ouverts, et stockage persistant demandé au navigateur.
@@ -45,7 +47,7 @@ La clé API est stockée en clair dans le `localStorage` de votre navigateur —
 
 ## Sauvegarde : ce qu'il faut savoir
 
-- **Activer** : Configuration (⚙) → onglet **Données** → « Choisir un fichier… ». Le board est ensuite écrit dans ce fichier après chaque modification, au format `{state, streak}`. **La clé API n'y figure jamais.**
+- **Activer** : Configuration (⚙) → onglet **Données** → « Choisir un fichier… ». Le board est ensuite écrit dans ce fichier après chaque modification, au format `{state, streak}`. **La clé API n'y figure jamais.** Avec plusieurs boards, chaque board a **son propre fichier** : activez la sauvegarde sur chacun d'eux.
 - **Multi-machine** : rangez ce fichier dans un dossier synchronisé (Drive, Dropbox, Syncthing) pour retrouver votre board ailleurs, sans compte. Si le fichier est plus récent que vos données locales, l'app propose de le recharger — elle ne remplace jamais votre board sans votre accord.
 - **Tant que la bannière est affichée, la sauvegarde est suspendue** : votre fichier reste intact jusqu'à ce que vous choisissiez « Recharger » ou « Ignorer ». « Ignorer » demande confirmation, car le board local écrasera alors le fichier.
 - **Permission** : Chrome, Edge et Opera redemandent l'autorisation à chaque session. La puce `💾 Réactiver` dans l'en-tête la rétablit en un clic.
@@ -65,6 +67,7 @@ Minuscule = agir sur la **carte**, majuscule = agir sur la **liste**.
 | Carte | `n` | Nouvelle carte |
 | Carte | `r` | Renommer |
 | Carte | `e` | Notes (édition) |
+| Carte | `i` | Entrée de journal datée (dans la note) |
 | Carte | `c` | Dupliquer |
 | Carte | `t` | Ajouter un tag |
 | Carte | `x` / `y` / `p` | Couper / copier / coller |
@@ -74,7 +77,8 @@ Minuscule = agir sur la **carte**, majuscule = agir sur la **liste**.
 | Liste | `X` / `Y` / `P` | Couper / copier / coller |
 | Global | `E` | Plier/déplier toutes les notes |
 | Global | `u` / `Ctrl+Y` | Undo / redo |
-| Global | `Ctrl+K` | Recherche |
+| Global | `Ctrl+K` | Recherche (board actif) |
+| Global | `b` | Changer / créer un board |
 | Global | `Esc` | Désélectionner / fermer |
 | Global | `?` | Aide clavier |
 
@@ -88,7 +92,7 @@ Le projet est un fichier unique, sans dépendance ni bundler. Pour lancer les te
 python3 -m http.server 8000
 ```
 
-Puis ouvrez [http://localhost:8000/test.html](http://localhost:8000/test.html) (76 tests DB via iframe + postMessage).
+Puis ouvrez [http://localhost:8000/test.html](http://localhost:8000/test.html) (210 tests via iframe + postMessage : données, sauvegarde, multiboard, interface).
 
 L'historique des versions est dans [CHANGELOG.md](CHANGELOG.md).
 

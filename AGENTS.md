@@ -1,6 +1,6 @@
 # KanbanJS — Projet anti-procrastination
 
-Fichier unique `index.html` (~5131 lignes) + `sw.js` (service worker, 26 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne. Publié sur GitHub Pages : https://damnscientist.github.io/KanbanJS/
+Fichier unique `index.html` (~6000 lignes) + `sw.js` (service worker, 26 lignes). Aucune dépendance, pas de bundler. S'ouvre dans un navigateur moderne. Publié sur GitHub Pages : https://damnscientist.github.io/KanbanJS/
 
 Ce fichier décrit l'état actuel, les conventions et la roadmap. L'historique des versions est dans [`CHANGELOG.md`](CHANGELOG.md) — à ne lire que pour retrouver le pourquoi d'une décision passée.
 
@@ -30,7 +30,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Undo/redo 30 niveaux avec streak synchronisé, reconstruction DOM sans `location.reload()`
 - Parsing robuste du JSON IA (équilibrage bracketing, détection guillemets, strip code fences)
 - Gestion d'erreur complète : bannière `QuotaExceededError`, crash recovery dans `init()`, `AbortController` 60s
-- Tests : 76 tests DB via iframe/postMessage (`test.html`)
+- Tests : 210 tests via iframe/postMessage (`test.html`) — DB, fichier compagnon, multiboard, interface (DOM de l'iframe)
 
 **UX & design**
 - Raccourcis clavier vim-like complets : navigation h/l/j/k, actions carte/liste, recherche `Ctrl+K`, undo/redo
@@ -59,19 +59,20 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 ## Fonctionnalités existantes
 
 ### Board
-- Board unique avec listes et cartes
+- **Plusieurs boards** indépendants (listes, cartes, historique undo, fichier de sauvegarde propres). Le board d'origine est le board **principal** (`main`, non supprimable). Menu `▾` à côté du nom (raccourci `b`) : filtre, changement, création. Configuration → onglet **Boards** : « compte pour le streak », seuil de suivi, suppression. Un nouveau board démarre en Backlog / In Progress / Done, sans Tuto ni gamification.
 - Renommage du board (input dans le header, `maxlength="200"`)
 - Header info : nombre de listes et cartes
 - Thème jour/nuit persisté dans 3 clés (`kanbanjs:theme-mode`, `kanbanjs:theme-dark`, `kanbanjs:theme-light`)
 - Sélecteur de thème dans la modale Configuration (onglet "Thèmes") : 4 sombres, 4 clairs
-- Bouton reset (purge `kanbanjs:state`, reconstruction DOM)
-- Export / Import JSON du board (boutons ↓ ↑ dans le header)
+- Bouton reset (remet le **board actif** à son gabarit, reconstruction DOM)
+- Export / Import JSON du board actif (boutons ↓ ↑ dans le header ; fichier nommé d'après le board pour les boards secondaires)
 - Indicateur de progression : barre + pourcentage dans le header (`3/8`, `38%`)
 
 ### Clavier
 - Raccourcis vim-like : minuscule = carte, majuscule = liste
 - Navigation : `h`/`l` listes ←/→, `j`/`k` cartes ↓/↑, `1-9` focus liste n
-- Actions carte : `n` créer (fallback Backlog si aucune liste sélectionnée), `r` renommer (dblclick), `e` ouvrir notes (cycle édition→preview→fermé), `c` dupliquer, `t` ajouter un tag, `x` couper, `y` copier, `p` coller, `d` marquer terminée
+- Actions carte : `n` créer (fallback Backlog si aucune liste sélectionnée), `r` renommer (dblclick), `e` ouvrir notes (cycle édition→preview→fermé), `i` entrée de journal datée, `c` dupliquer, `t` ajouter un tag, `x` couper, `y` copier, `p` coller, `d` marquer terminée
+- Boards : `b` ouvre le menu des boards (filtre, ↑↓, Entrée, Échap)
 - Actions liste : `N` créer, `R` renommer, `D` toggle terminé, `C` replier/déplier, `X` couper, `Y` copier, `P` coller
 - `E` plier/déplier toutes les notes (preview), `Ctrl+drag` = copier une carte au lieu de déplacer
 - `Esc` désélectionne la carte/liste courante ou ferme l'overlay actif, `?` affiche l'aide clavier
@@ -79,7 +80,7 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Sélection visuelle : bordure accent, actions toujours visibles sur carte sélectionnée
 - Ignore automatiquement quand un input/textarea a le focus ou une modale est ouverte
 - `Ctrl+K` : recherche fuzzy sur les cartes du board (texte, notes, tags, titre de liste)
-- `u` undo, `Ctrl+Y` redo : 30 niveaux de snapshots (session uniquement)
+- `u` undo, `Ctrl+Y` redo : 30 niveaux de snapshots par board (session uniquement)
 
 ### Listes
 - Création inline (bouton + formulaire "Ajouter une liste")
@@ -103,6 +104,8 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - Drag & drop souris entre listes (ou au sein de la même liste)
 - Drag ghost + placeholder visuel
 
+- **Journal daté** : `i` ou bouton 📅 → entête `### AAAA-MM-JJ` en haut de la note, curseur dessous ; une insertion laissée vide est annulée.
+- **Projets non suivis** : carte atténuée + badge `⏳ N j` si la note n'a pas bougé depuis le seuil du board (`notesUpdatedAt`, 0 = désactivé, défaut 14 j sur les nouveaux boards, 0 sur le principal).
 - **Tags** : chaque carte a un champ `tags: []`, chips colorés (couleur par hash du nom), bouton `+ tag`, raccourci `t`, tags préservés au copier/coller/dupliquer, recherchables via `Ctrl+K`.
 
 ### IA (Décomposition)
@@ -117,12 +120,13 @@ Le public naturel est les gens avec TDAH, les étudiants qui procrastinent, les 
 - **Templates** : 12 templates de corvées universelles intégrés, matching fuzzy sur le texte saisi dans le textarea (💡 "Template suggéré"). Zéro API requise.
 
 ### Persistance
-- `localStorage` avec 8 clés :
-  - `kanbanjs:state` → board, listes, cartes (reset nettoie uniquement celle-ci)
-  - `kanbanjs:state.bak` → copie de secours (état précédent), utilisée par le self-heal de `DB._load()`
-  - `kanbanjs:backup` → `{ firstSeen, lastExport }` pour le repli export manuel
+- `localStorage` :
+  - `kanbanjs:state` → board principal (listes, cartes) ; `kanbanjs:state:<id>` → boards secondaires
+  - `kanbanjs:state.bak` / `kanbanjs:state:<id>.bak` → copie de secours (état précédent), utilisée par le self-heal de `DB._load()`
+  - `kanbanjs:backup` / `kanbanjs:backup:<id>` → `{ firstSeen, lastExport }` pour le repli export manuel
+  - `kanbanjs:boards` → index `[{ id, streak, staleDays }]`, écrit à la création du 2ᵉ board ; `kanbanjs:board-active` → dernier board utilisé (aussi en `sessionStorage`, par onglet)
   - `kanbanjs:config` → provider, endpoint, apiKey, model
-  - `kanbanjs:streak` → `{ streak, lastDate, todayCount, todayDate }` (export/import inclus)
+  - `kanbanjs:streak` → `{ streak, lastDate, todayCount, todayDate }`, unique pour tous les boards (export/import inclus seulement pour un board qui compte pour le streak)
   - Thème (3 clés) :
     - `kanbanjs:theme-mode` → 'dark' | 'light' | 'system'
     - `kanbanjs:theme-dark` → 'warm-night' | 'deep-ocean' | 'forest' | 'tokyo-night'
@@ -158,10 +162,25 @@ Sauvegarde automatique du board dans un fichier choisi par l'utilisateur, via la
 | Module | Responsabilité | API publique |
 |---|---|---|
 | `initTheme` | IIFE, lit/applique/persiste le thème | lecture au load |
-| `DB` | Adapter localStorage | `getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, toggleCollapsed, getCards, getAllCards, createCard, updateCard, updateCardNotes, updateCardTags, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard, reload, onSave, loadSource, hasState, getBackupInfo, setBackupInfo, exportJSON, importJSON, reset, restoreJSON, batch` |
-| `AutoSave` | Fichier compagnon (File System Access API + handle en IndexedDB) | `init, enable, attach, disable, resume, restore, flush, schedule, dismiss, refreshPending, checkExternal, available, capability, isBrave, status, pending, fileName, lastWriteAt, permission, onChange` |
+| `DB` | Adapter localStorage | `key, activeBoard, listBoards, createBoard, useBoard, deleteBoard, getBoardMeta, setBoardMeta, countsStreak, setCardNotesUpdatedAt, getBoard, renameBoard, getLists, createList, renameList, deleteList, reorderList, toggleListDone, toggleCollapsed, getCards, getAllCards, createCard, updateCard, updateCardNotes, updateCardTags, setCardDoneAt, setCardsDoneAt, deleteCard, moveCard, reload, onSave, loadSource, hasState, getBackupInfo, setBackupInfo, exportJSON, importJSON, reset, restoreJSON, batch` |
+| `AutoSave` | Fichier compagnon (File System Access API + handle en IndexedDB) | `init, enable, attach, disable, resume, restore, flush, schedule, dismiss, refreshPending, checkExternal, available, capability, isBrave, switchBoard, forget, status, pending, fileName, lastWriteAt, permission, onChange` |
 | `DnD` | Moteur de drag & drop générique | `start(dragEl, id, { ghostEl?, ghostClass?, phClass?, getZone, getAfter, getPos, skip? }, onDrop)` |
-| `App` | UI Kanban | `init()` boot la session |
+| `App` | UI Kanban | `init, switchBoard, createBoard, deleteBoard, setBoardMeta` |
+
+### Multiboard (v1.2.0)
+
+Référence technique, à lire avant de toucher à `DB`, `AutoSave`, aux piles undo ou au changement de board.
+
+- **Stockage — sans migration** : le board existant reçoit l'id réservé `main` et **garde ses clés historiques** (`kanbanjs:state`, `.bak`, `kanbanjs:backup`, handle IndexedDB `companion`). Les nouveaux boards utilisent des clés suffixées (`kanbanjs:state:<id>`, `kanbanjs:state:<id>.bak`, `kanbanjs:backup:<id>`). Index `kanbanjs:boards` = `[{ id, streak, staleDays }]`, écrit seulement à la création d'un second board ; les noms restent dans chaque état (`state.board.name`, source unique). Board actif : `sessionStorage` (par onglet), repli sur `localStorage` (dernier utilisé). L'identifiant d'un board vient de l'index, jamais de `state.board.id` (identique pour tous les états historiques, `'board-1'`). Retour à la v1.1.2 possible tel quel.
+- **Index auto-réparé** : `_readIndex()` complète toujours l'index par un scan des clés `kanbanjs:state:*` — un index corrompu ou incomplet ne fait jamais disparaître un board. `deleteBoard()` retire donc les clés **avant** l'index.
+- **Board supprimé ailleurs** : `_save()` n'écrit jamais pour un board absent de l'index (pas de clé orpheline), et `DB.reload()` rebascule sur `main` si le board actif a disparu.
+- ✅ **Module `DB` livré (2026-11-01)** : `activeBoard`, `listBoards`, `createBoard`, `useBoard` (refusé pendant un `batch`), `deleteBoard` (ni `main` ni le board actif), `getBoardMeta`/`setBoardMeta`, `countsStreak`, `key()` (remplace `DB.KEY`), constantes `MAIN`, `INDEX_KEY`, `STREAK_KEY`. Streak exporté/importé seulement si le board compte pour le streak. `notesUpdatedAt` posé à la création et à chaque changement réel de note (absent des cartes antérieures : à ignorer).
+- ✅ **`AutoSave` livré (2026-11-01)** : un fichier par board (handle IndexedDB `companion` pour `main`, `companion:<id>` sinon). Le handle est **lié à un board** (`_boundId`) : `_persist` écrit sous la clé de ce board, `flush`/`schedule`/`checkExternal` refusent d'agir si le board actif n'est plus celui du handle (garde-fou contre tout changement qui contournerait `switchBoard`, ex. `DB.reload()` après suppression distante). `switchBoard(doSwitch)` est **le seul chemin** pour changer de board : il vide l'écriture en attente **et en vol** dans le fichier quitté (boucle jusqu'à stabilité, une édition pendant l'écriture finale n'est pas perdue), détache, change, rattache (`_bind`, aussi utilisé par `init`), puis rattrape un fichier resté périmé (`_catchUp`, comparaison de contenu). `enable`, `attach`, `disable`, `resume`, `restore` et `switchBoard` sont **sérialisés** (`_serial`, file en chaîne de promesses) : un picker ou une demande de permission en cours fait attendre le changement de board. `forget(id)` supprime le handle d'un board non actif. Côté App, `_syncFromStorage` repasse par `switchBoard` quand `DB.reload()` a changé le board actif. La règle d'or tient : un bandeau en attente bloque l'écriture du fichier quitté et réapparaît au retour.
+- ✅ **Étape `App` livrée (2026-11-01)** : `App.switchBoard(id)` (refusé pendant une édition, un autre changement ou une synchro ; passe par `AutoSave.switchBoard` ; reconstruit le DOM même si `AutoSave` échoue après le changement), `App.createBoard`, `App.deleteBoard` (oublie handle et piles), `App.setBoardMeta`. **Piles undo par board** (`sessionStorage`, clés historiques pour `main`, suffixées sinon) ; filet `_stacksOk()` si le board actif a changé hors App. Purge des piles d'un board modifié dans un autre onglet, même non actif. **Streak et undo** : les piles stockent des valeurs absolues du streak ; elles sont **neutralisées** (jamais restaurées) quand le streak a changé pendant l'absence du board ou quand on bascule « compte pour le streak » — sinon un `u` effacerait la progression faite sur un autre board. Gamification conditionnée par `DB.countsStreak()` (streak, badge, compteur du jour, confettis, citation) ; un changement de streak dans un autre onglet n'affecte pas un board qui ne compte pas. **Quota `sessionStorage`** : `_saveStack` purge les piles des autres boards puis tronque, et `mutate()` n'est jamais bloqué par un instantané impossible.
+- ✅ **Interface livrée (2026-11-01)** : menu des boards (`BoardMenu`) dans l'en-tête — bouton `▾`, raccourci `b` (ferme l'aide clavier si ouverte), combobox ARIA (filtre `role=combobox`, `aria-activedescendant`), filtre insensible à la casse et aux accents, entrée « Créer « … » » masquée si le nom existe déjà, ↑↓ Entrée Échap (Échap ne remonte pas au handler global), fermeture au clic extérieur ou à la perte de focus, focus rendu au bouton. Création sans nom → « Nouveau board » puis focus sur le champ du nom. Onglet **Boards** de la Configuration (`renderBoardsTab`) : streak, seuil de suivi (vide ou invalide → valeur conservée), Supprimer (désactivé pour `main` et le board actif, confirmation) ; re-rendu à chaque ouverture et sur changement d'index. **Garde de bascule** `_switchBlocked()` distincte de `_editingActive()` : les aperçus de notes dépliés et l'aide clavier ne bloquent pas le changement de board (ils bloquent toujours le rebuild de synchro). Retour au principal après suppression du board actif dans un autre onglet : message explicite dans l'en-tête. Nom du fichier d'export suffixé par le nom du board (boards secondaires).
+- ✅ **Suivi de projet livré (2026-11-01)** : raccourci carte `i` et bouton 📅 (actions de carte) → entête `### AAAA-MM-JJ` en haut de la note, curseur dessous, pas de doublon le même jour. Une insertion laissée sans saisie est **annulée exactement** à l'enregistrement (drapeau `_journal` = valeur d'origine + valeur insérée, jamais de retrait par motif : une note de l'utilisateur commençant par l'entête du jour reste intacte, minuit sans effet). `saveNotes` n'écrit rien si la note est inchangée (pas d'instantané undo parasite). Badge `⏳ N j` + carte atténuée si `notesUpdatedAt` ≥ seuil du board (`_staleDays`, chargé par `_rebuild`, re-rendu par `App.setBoardMeta`), libellé « Aucune note depuis… » pour une carte sans note, rien en liste terminée (CSS `:not(.card-done)`), recalcul au retour sur l'onglet. `updateCardNotes` compare les notes à fins de ligne normalisées (`\r\n`). Couper/coller conserve `notesUpdatedAt` (`DB.setCardNotesUpdatedAt`), copier/dupliquer/Ctrl+glisser repartent d'une date neuve.
+- **Correctifs annexes (hors chantier)** : `duplicateCard` (`c`) construisait la copie avant `updateCardNotes`/`updateCardTags` — note et tags absents de l'affichage, puis **effacés en base** au premier aller-retour ≡ ou `+ tag` (même famille que C7 en v1.1.1, oubliée ici). `autoResize` oubliait l'épaisseur des bordures (`border-box`) : barre de défilement parasite dans toutes les notes.
+- **Règle** : `App.switchBoard(id)` est **le seul chemin** pour changer de board (il passe par `AutoSave.switchBoard`, rebinde les piles undo, reconstruit le DOM). Ne jamais appeler `DB.useBoard()` directement hors tests. Garde de bascule `_switchBlocked()` (édition réelle, modale, recherche) ≠ garde de synchro `_editingActive()` (inclut aussi aperçus de notes et aide clavier).
 
 ### Mécanique DnD
 - `pointerdown`/`pointermove`/`pointerup` — API unifiée
@@ -238,6 +257,8 @@ Issus des relectures successives. Aucun n'est bloquant ; aucun n'est dans la roa
 - **Rappel d'export non réévalué en session** : `refreshAutoSaveUI()` n'est appelé qu'au boot, sur `AutoSave.onChange`, après un export et à l'ouverture de l'onglet Données. Un board qui passe de « jamais modifié » à « modifié » dans la même session n'affiche la puce `⬇ Sauvegarder` qu'au rechargement suivant. Fenêtre étroite (`firstSeen` ≥ 7 j **et** absence de clé `state`).
 - **`lastExport` horodaté sans confirmation** : si le navigateur bloque le téléchargement, le rappel est tu pour 7 jours. Aucune API ne permet de savoir qu'un téléchargement a abouti.
 - **Changement distant pendant un glisser-déposer** : `_syncFromStorage()` diffère le `_rebuild()` pendant une édition, mais ne détecte pas un drag en cours. Un changement distant pile à ce moment peut détacher l'élément saisi. Fenêtre très étroite (200 ms de debounce).
+- **Undo et streak** : les piles undo stockent des valeurs absolues du streak. Elles sont neutralisées dès que le streak a bougé pendant l'absence du board, ou à la bascule « compte pour le streak » : un undo n'efface jamais la progression faite ailleurs, mais n'ajuste alors plus le streak de la complétion annulée (léger excédent possible du compteur du jour).
+- **Badge de non-suivi** : recalculé au rendu et au retour sur l'onglet, pas en continu. Un Ctrl+glisser (copie) repart d'une date neuve, un couper/coller la conserve.
 - **Confettis** : un aller-retour `100 % → < 100 % → 100 %` en moins de 50 ms (auto-répétition clavier) est manqué par le debounce de `refreshHeaderInfo()`.
 - **`localStorage` hors du module `DB`** : `streak`, `config` et les 3 clés de thème sont lus/écrits directement depuis `App` et `initTheme`. Assumé, mais la frontière « tout passe par `DB` » n'est pas tenue.
 
@@ -250,28 +271,7 @@ Voir aussi la section **Faiblesses** pour `extractCardData()` (lit le DOM) et le
 Après six semaines d'usage quotidien sans incident, l'ordre retenu est le suivant. La traduction passe **avant** le mode focus pour que les nouvelles fonctionnalités naissent avec le système de traduction, au lieu d'être migrées après coup.
 
 0. **Bugs visuels** — remontés au fil de l'eau par l'utilisateur, traités en priorité dès qu'ils arrivent.
-1. **Multiboard (v1.2.0)** — Plusieurs boards indépendants, pour suivre les projets d'une équipe à côté du board personnel. Arbitrages validés :
-   - **Usage** : un seul utilisateur (pas de partage, pas de gestion de conflits). 1 carte = 1 projet, le suivi se fait dans la note.
-   - **Stockage — sans migration** : le board existant reçoit l'id réservé `main` et **garde ses clés historiques** (`kanbanjs:state`, `.bak`, `kanbanjs:backup`, handle IndexedDB `companion`). Les nouveaux boards utilisent des clés suffixées (`kanbanjs:state:<id>`, `kanbanjs:state:<id>.bak`, `kanbanjs:backup:<id>`). Index `kanbanjs:boards` = `[{ id, streak, staleDays }]`, écrit seulement à la création d'un second board ; les noms restent dans chaque état (`state.board.name`, source unique). Board actif : `sessionStorage` (par onglet), repli sur `localStorage` (dernier utilisé). L'identifiant d'un board vient de l'index, jamais de `state.board.id` (identique pour tous les états historiques, `'board-1'`). Retour à la v1.1.2 possible tel quel.
-   - **Index auto-réparé** : `_readIndex()` complète toujours l'index par un scan des clés `kanbanjs:state:*` — un index corrompu ou incomplet ne fait jamais disparaître un board. `deleteBoard()` retire donc les clés **avant** l'index.
-   - **Board supprimé ailleurs** : `_save()` n'écrit jamais pour un board absent de l'index (pas de clé orpheline), et `DB.reload()` rebascule sur `main` si le board actif a disparu.
-   - ✅ **Module `DB` livré (2026-11-01)** : `activeBoard`, `listBoards`, `createBoard`, `useBoard` (refusé pendant un `batch`), `deleteBoard` (ni `main` ni le board actif), `getBoardMeta`/`setBoardMeta`, `countsStreak`, `key()` (remplace `DB.KEY`), constantes `MAIN`, `INDEX_KEY`, `STREAK_KEY`. Streak exporté/importé seulement si le board compte pour le streak. `notesUpdatedAt` posé à la création et à chaque changement réel de note (absent des cartes antérieures : à ignorer).
-   - ✅ **`AutoSave` livré (2026-11-01)** : un fichier par board (handle IndexedDB `companion` pour `main`, `companion:<id>` sinon). Le handle est **lié à un board** (`_boundId`) : `_persist` écrit sous la clé de ce board, `flush`/`schedule`/`checkExternal` refusent d'agir si le board actif n'est plus celui du handle (garde-fou contre tout changement qui contournerait `switchBoard`, ex. `DB.reload()` après suppression distante). `switchBoard(doSwitch)` est **le seul chemin** pour changer de board : il vide l'écriture en attente **et en vol** dans le fichier quitté (boucle jusqu'à stabilité, une édition pendant l'écriture finale n'est pas perdue), détache, change, rattache (`_bind`, aussi utilisé par `init`), puis rattrape un fichier resté périmé (`_catchUp`, comparaison de contenu). `enable`, `attach`, `disable`, `resume`, `restore` et `switchBoard` sont **sérialisés** (`_serial`, file en chaîne de promesses) : un picker ou une demande de permission en cours fait attendre le changement de board. `forget(id)` supprime le handle d'un board non actif. Côté App, `_syncFromStorage` repasse par `switchBoard` quand `DB.reload()` a changé le board actif. La règle d'or tient : un bandeau en attente bloque l'écriture du fichier quitté et réapparaît au retour.
-   - ✅ **Étape `App` livrée (2026-11-01)** : `App.switchBoard(id)` (refusé pendant une édition, un autre changement ou une synchro ; passe par `AutoSave.switchBoard` ; reconstruit le DOM même si `AutoSave` échoue après le changement), `App.createBoard`, `App.deleteBoard` (oublie handle et piles), `App.setBoardMeta`. **Piles undo par board** (`sessionStorage`, clés historiques pour `main`, suffixées sinon) ; filet `_stacksOk()` si le board actif a changé hors App. Purge des piles d'un board modifié dans un autre onglet, même non actif. **Streak et undo** : les piles stockent des valeurs absolues du streak ; elles sont **neutralisées** (jamais restaurées) quand le streak a changé pendant l'absence du board ou quand on bascule « compte pour le streak » — sinon un `u` effacerait la progression faite sur un autre board. Gamification conditionnée par `DB.countsStreak()` (streak, badge, compteur du jour, confettis, citation) ; un changement de streak dans un autre onglet n'affecte pas un board qui ne compte pas. **Quota `sessionStorage`** : `_saveStack` purge les piles des autres boards puis tronque, et `mutate()` n'est jamais bloqué par un instantané impossible.
-   - ✅ **Interface livrée (2026-11-01)** : menu des boards (`BoardMenu`) dans l'en-tête — bouton `▾`, raccourci `b` (ferme l'aide clavier si ouverte), combobox ARIA (filtre `role=combobox`, `aria-activedescendant`), filtre insensible à la casse et aux accents, entrée « Créer « … » » masquée si le nom existe déjà, ↑↓ Entrée Échap (Échap ne remonte pas au handler global), fermeture au clic extérieur ou à la perte de focus, focus rendu au bouton. Création sans nom → « Nouveau board » puis focus sur le champ du nom. Onglet **Boards** de la Configuration (`renderBoardsTab`) : streak, seuil de suivi (vide ou invalide → valeur conservée), Supprimer (désactivé pour `main` et le board actif, confirmation) ; re-rendu à chaque ouverture et sur changement d'index. **Garde de bascule** `_switchBlocked()` distincte de `_editingActive()` : les aperçus de notes dépliés et l'aide clavier ne bloquent pas le changement de board (ils bloquent toujours le rebuild de synchro). Retour au principal après suppression du board actif dans un autre onglet : message explicite dans l'en-tête. Nom du fichier d'export suffixé par le nom du board (boards secondaires).
-   - ✅ **Suivi de projet livré (2026-11-01)** : raccourci carte `i` et bouton 📅 (actions de carte) → entête `### AAAA-MM-JJ` en haut de la note, curseur dessous, pas de doublon le même jour. Une insertion laissée sans saisie est **annulée exactement** à l'enregistrement (drapeau `_journal` = valeur d'origine + valeur insérée, jamais de retrait par motif : une note de l'utilisateur commençant par l'entête du jour reste intacte, minuit sans effet). `saveNotes` n'écrit rien si la note est inchangée (pas d'instantané undo parasite). Badge `⏳ N j` + carte atténuée si `notesUpdatedAt` ≥ seuil du board (`_staleDays`, chargé par `_rebuild`, re-rendu par `App.setBoardMeta`), libellé « Aucune note depuis… » pour une carte sans note, rien en liste terminée (CSS `:not(.card-done)`), recalcul au retour sur l'onglet. `updateCardNotes` compare les notes à fins de ligne normalisées (`\r\n`). Couper/coller conserve `notesUpdatedAt` (`DB.setCardNotesUpdatedAt`), copier/dupliquer/Ctrl+glisser repartent d'une date neuve.
-   - **Correctifs annexes (hors chantier)** : `duplicateCard` (`c`) construisait la copie avant `updateCardNotes`/`updateCardTags` — note et tags absents de l'affichage, puis **effacés en base** au premier aller-retour ≡ ou `+ tag` (même famille que C7 en v1.1.1, oubliée ici). `autoResize` oubliait l'épaisseur des bordures (`border-box`) : barre de défilement parasite dans toutes les notes.
-   - **Reste** : README / CHANGELOG / `VERSION` 1.2.0 / cache `v7`. **Publiable dès que c'est fait** — plus aucun risque connu sur les données.
-   - **Gamification** : option par board « compte pour le streak » — cochée sur `main`, décochée par défaut sur les nouveaux. Le streak reste **unique** ; seuls les boards cochés l'alimentent. Citations et confettis suivent la même option.
-   - **Fichier compagnon** : un fichier par board, handle en IndexedDB sous la clé du board. Format `{state, streak}` inchangé.
-   - **Nouveau board** : Backlog / In Progress / Done, vide, sans Tuto (le WIP warning reste branché sur « In Progress »).
-   - **Navigation** : sélecteur à la place du nom du board dans le header ; raccourci `b` → sélecteur filtrable, Entrée pour choisir.
-   - **Recherche `Ctrl+K`** : board actif seulement (inchangé).
-   - **Garde-fous** : undo/redo purgés au changement ; sync multi-onglets filtrée sur la clé du board actif ; pas de changement pendant une édition ni pendant un flush `AutoSave` ; suppression confirmée, board `main` non supprimable ; self-heal et rappel d'export par board.
-   - **Suivi de projet, livré dans le même chantier** :
-     - **Entrée de journal datée** : insertion en **haut** de la note d'une entête `### AAAA-MM-JJ` (via `dateKey`), par bouton et raccourci.
-     - **Projets non suivis** : chaque carte stocke `notesUpdatedAt` ; au-delà du seuil, la carte est atténuée avec un badge « N j ». Seuil **réglable par board**, 14 j par défaut, **désactivé** sur le board personnel.
-   - **Tests à prévoir (étapes suivantes)** : isolation entre boards côté App, streak non alimenté par un board décoché, seuil de non-suivi, ordre d'insertion de l'entête datée, purge undo au changement, fichier compagnon du board quitté recevant **son** contenu, démarrage sur un board secondaire.
+1. ✅ **Multiboard (v1.2.0)** — **Livré (2026-11-01)**. Plusieurs boards indépendants pour suivre les projets d'une équipe à côté du board personnel (1 carte = 1 projet, suivi dans la note : journal daté `i`, badge de non-suivi). Référence technique : section **Multiboard** de l'Architecture ; historique : `CHANGELOG.md`.
 2. **Traduction (i18n)** — Interface et README en anglais en plus du français. Dictionnaire de chaînes `t(key)` dans le fichier unique, langue détectée via `navigator.language` et surchargeable dans Configuration. Inclut le prompt système IA, les 12 templates, les 50 citations et le Tuto. Premier levier de distribution : le public visé est majoritairement anglophone.
 3. **Mode focus « une seule carte »** — Masquer le board et n'afficher que la prochaine micro-action (première carte de In Progress, sinon de la liste sélectionnée), avec un gros bouton « Fait » qui passe à la suivante. Un board de 50 cartes peut lui-même être paralysant pour le public TDAH : le mode focus retire le choix.
 4. **Minuteur de démarrage** — Compte à rebours de 2-3 min sur la carte en cours (règle des 2 minutes). Pensé avec le mode focus, utilisable hors focus.

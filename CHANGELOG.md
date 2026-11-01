@@ -2,6 +2,24 @@
 
 Historique des versions, de la plus récente à la plus ancienne. Le contexte de développement (architecture, conventions, roadmap) est dans [`AGENTS.md`](AGENTS.md).
 
+## 2026-11-01 — Multiboard et suivi de projet (v1.2.0)
+
+- **Plusieurs boards** : pour suivre les projets d'une équipe à côté du board personnel (1 carte = 1 projet, suivi dans la note). Menu `▾` à côté du nom du board et raccourci `b` (filtre insensible à la casse et aux accents, création « Créer « … » »). Configuration → onglet **Boards** : « compte pour le streak », seuil de suivi, suppression. Chaque board a ses listes, son historique d'annulation et son fichier de sauvegarde. Le presse-papier traverse les boards (couper sur l'un, coller sur l'autre).
+- **Sans migration** : le board existant devient le board principal (`main`) et garde ses clés `localStorage` et son handle IndexedDB ; rien n'est écrit tant qu'aucun second board n'existe, un retour à la v1.1.2 reste possible tel quel. Les nouveaux boards utilisent des clés suffixées et un index `kanbanjs:boards`, auto-réparé par scan des clés.
+- **Gamification par board** : streak, compteur du jour, confettis et citations seulement sur les boards qui « comptent pour le streak » (le principal par défaut). La barre de progression reste partout. Le streak reste unique.
+- **Suivi de projet** : `i` ou bouton 📅 → entrée de journal datée en haut de la note (annulée si rien n'est écrit) ; badge `⏳ N j` et carte atténuée quand la note n'a pas bougé depuis le seuil du board (14 j par défaut sur les nouveaux boards, désactivé sur le principal).
+- **Fichier compagnon par board** : `AutoSave.switchBoard` vide l'écriture en attente **et en vol** dans le fichier du board quitté avant de changer ; le handle est lié à son board, aucun chemin ne peut écrire un board dans le fichier d'un autre.
+- **Undo par board** : piles `sessionStorage` par board, purgées quand un autre onglet modifie le board, filet si le board actif change hors App ; les valeurs de streak capturées sont neutralisées quand le streak a bougé ailleurs. Quota `sessionStorage` saturé : purge des autres boards puis troncature, l'action n'est jamais bloquée.
+- **Multi-onglets** : un board supprimé dans un autre onglet n'est jamais recréé en clé orpheline ; l'onglet resté dessus revient au principal avec un message.
+- **Correctifs hors chantier** :
+  - **Duplication (`c`)** : la copie s'affichait sans note ni tags, puis les **effaçait en base** au premier aller-retour ≡ ou `+ tag` (même famille que C7 en v1.1.1, oubliée ici).
+  - **`autoResize`** : l'épaisseur des bordures (`border-box`) était oubliée — barre de défilement parasite dans toutes les notes.
+  - **`saveNotes`** n'écrit plus une note inchangée (instantanés undo parasites à chaque ouverture/fermeture).
+- **Méthode** : livré en 5 étapes (`DB`, `AutoSave`, `App`, interface, suivi de projet), chacune **relue en contexte neuf** par un sous-agent en lecture seule avant commit. Les relectures ont remonté **39 constats**, tous corrigés (deux reportés d’une étape à la suivante, puis corrigés), dont plusieurs pertes de données possibles (écriture d'un board dans le fichier d'un autre, index corrompu faisant disparaître des boards, undo restaurant un état périmé, quota bloquant toutes les actions). Chaque correctif a été validé par **mutation inverse** ; plusieurs tests qui passaient sur du code faux ont été rendus discriminants. Rendu, focus et ARIA vérifiés sur la vraie page (Brave headless, profil jetable).
+- **Tests** : 76 → 210.
+- **Documentation** : historique déplacé d'`AGENTS.md` vers `CHANGELOG.md` ; roadmap réordonnée (traduction, mode focus, minuteur, son, LM Studio, checklist de distribution) ; référence technique **Multiboard** dans `AGENTS.md`.
+- **Service worker** : cache `kanbanjs-v6` → `v7`. `VERSION` 1.2.0.
+
 ## 2026-09-20 — Détection en session et dette technique (v1.1.2)
 
 - **Détection d'un fichier modifié pendant la session** : nouvelle méthode `AutoSave.checkExternal()`, appelée toutes les 60 s (`POLL_MS`, suspendue quand l'onglet est caché) et au retour de visibilité. Elle compare `getFile().lastModified` à `lastWriteAt` et, si le fichier est plus récent, affiche le bandeau « Recharger ? » — les écritures étant alors suspendues, la version externe n'est jamais écrasée. Lève l'ancienne limite « détection seulement au boot ou au clic Réactiver ».
